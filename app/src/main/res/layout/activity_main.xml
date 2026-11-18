@@ -197,6 +197,18 @@
                     android:textStyle="bold" />
 
                 <Button
+                    android:id="@+id/btnCheckPermissions"
+                    android:layout_width="wrap_content"
+                    android:layout_height="34dp"
+                    android:layout_marginEnd="6dp"
+                    android:background="@drawable/bg_btn_secondary"
+                    android:paddingHorizontal="10dp"
+                    android:text="@string/btn_check_permissions"
+                    android:textAllCaps="false"
+                    android:textColor="@color/text_primary"
+                    android:textSize="11sp" />
+
+                <Button
                     android:id="@+id/btnPollNow"
                     android:layout_width="wrap_content"
                     android:layout_height="34dp"
@@ -692,6 +704,26 @@
                     android:textColor="@color/accent_ocean"
                     android:textSize="15sp"
                     android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="6dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnSetLogPath"
+                    android:layout_width="wrap_content"
+                    android:layout_height="32dp"
+                    android:layout_marginEnd="6dp"
+                    android:background="@drawable/bg_btn_primary"
+                    android:paddingHorizontal="10dp"
+                    android:text="@string/btn_set_log_path"
+                    android:textAllCaps="false"
+                    android:textColor="#FFFFFF"
+                    android:textSize="11sp" />
 
                 <Button
                     android:id="@+id/btnCopyLogs"
@@ -734,8 +766,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="6dp"
-                android:ellipsize="middle"
-                android:singleLine="true"
+                android:clickable="true"
+                android:focusable="true"
                 android:text="日志文件："
                 android:textColor="@color/text_muted"
                 android:textSize="11sp" />

@@ -40,6 +40,8 @@ public final class AppPrefs {
     private static final String KEY_LIGHT_IS_CUSTOM = "light_is_custom";
     private static final String KEY_DARK_IS_CUSTOM = "dark_is_custom";
     private static final String KEY_CURRENT_TARGET_STATE = "current_target_state";
+    private static final String KEY_LOG_CUSTOM_DIR_PATH = "log_custom_dir_path";
+    private static final String KEY_LOG_SAF_TREE_URI = "log_saf_tree_uri";
 
     private final SharedPreferences prefs;
 
@@ -158,6 +160,30 @@ public final class AppPrefs {
     public void setCurrentTargetState(boolean isDark) {
         prefs.edit().putInt(KEY_CURRENT_TARGET_STATE,
                 isDark ? TARGET_STATE_DARK : TARGET_STATE_LIGHT).apply();
+    }
+
+    public String getLogCustomDirPath() {
+        return prefs.getString(KEY_LOG_CUSTOM_DIR_PATH, null);
+    }
+
+    public void setLogCustomDirPath(String path) {
+        if (path == null || path.trim().isEmpty()) {
+            prefs.edit().remove(KEY_LOG_CUSTOM_DIR_PATH).apply();
+        } else {
+            prefs.edit().putString(KEY_LOG_CUSTOM_DIR_PATH, path.trim()).apply();
+        }
+    }
+
+    public String getLogSafTreeUri() {
+        return prefs.getString(KEY_LOG_SAF_TREE_URI, null);
+    }
+
+    public void setLogSafTreeUri(String uriString) {
+        if (uriString == null || uriString.trim().isEmpty()) {
+            prefs.edit().remove(KEY_LOG_SAF_TREE_URI).apply();
+        } else {
+            prefs.edit().putString(KEY_LOG_SAF_TREE_URI, uriString.trim()).apply();
+        }
     }
 
     public static String formatWallpaperMode(int mode) {

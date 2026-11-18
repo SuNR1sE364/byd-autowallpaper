@@ -2,6 +2,7 @@ package com.byd.autodarkwallpaper.ui;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.WallpaperManager;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -13,13 +14,19 @@ import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.Settings;
+import android.text.InputType;
 import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.ScrollView;
@@ -35,6 +42,8 @@ import com.byd.autodarkwallpaper.util.AppLogger;
 import com.byd.autodarkwallpaper.wallpaper.WallpaperController;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -46,7 +55,9 @@ public class MainActivity extends Activity {
     private static final String TAG = "MainUI";
     private static final int REQ_PICK_LIGHT = 1001;
     private static final int REQ_PICK_DARK = 1002;
-    private static final int REQ_POST_NOTIFICATIONS = 2001;
+    private static final int REQ_PICK_LOG_TREE = 1003;
+    private static final int REQ_CREATE_LOG_FILE = 1004;
+    private static final int REQ_RUNTIME_PERMISSIONS = 2001;
 
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
     private AppPrefs prefs;
@@ -105,6 +116,7 @@ public class MainActivity extends Activity {
     private CheckBox cbBootAutoStart;
 
     // 遥测与日志
+    private Button btnCheckPermissions;
     private Button btnPollNow;
     private TextView tvTelemetrySystem;
     private TextView tvTelemetryLight;
@@ -112,6 +124,7 @@ public class MainActivity extends Activity {
     private TextView tvTelemetryBodywork;
     private TextView tvTelemetryDecision;
     private TextView tvLogFilePath;
+    private Button btnSetLogPath;
     private Button btnCopyLogs;
     private Button btnExportLogs;
     private Button btnClearLogs;
@@ -153,9 +166,9 @@ public class MainActivity extends Activity {
         setupControlListeners();
         refreshWallpaperPreviewsAsync();
         refreshLiveWallpaperStatusText();
+        refreshLogLocationText();
 
-        tvLogFilePath.setText("日志文件：" + AppLogger.getLogFilePath());
-        requestNotificationPermissionIfNeeded();
+        requestAppPermissionsIfNeeded();
 
         if (prefs.isEnabled() && !AutoDarkMonitorService.isRunning()) {
             AppLogger.i(TAG, "首次进入主界面，自动拉起 AutoDarkMonitorService");
@@ -170,6 +183,7 @@ public class MainActivity extends Activity {
         AutoDarkMonitorService.addObserver(monitorObserver);
         WallpaperController.addApplyStatusListener(applyStatusListener);
         refreshLiveWallpaperStatusText();
+        refreshLogLocationText();
     }
 
     @Override
@@ -203,30 +217,72 @@ public class MainActivity extends Activity {
         if (resultCode != RESULT_OK || data == null || data.getData() == null) {
             return;
         }
-        if (requestCode != REQ_PICK_LIGHT && requestCode != REQ_PICK_DARK) {
+        final Uri uri = data.getData();
+
+        if (requestCode == REQ_PICK_LIGHT || requestCode == REQ_PICK_DARK) {
+            final boolean isDark = (requestCode == REQ_PICK_DARK);
+            AppLogger.i(TAG, "用户选择了" + (isDark ? "夜间" : "日间") + "壁纸 URI=" + uri);
+
+            ioExecutor.execute(() -> {
+                try {
+                    WallpaperController.importWallpaperFromUri(MainActivity.this, uri, isDark);
+                    runOnUiThread(() -> {
+                        refreshWallpaperPreviewsAsync();
+                        Toast.makeText(MainActivity.this,
+                                (isDark ? "夜间" : "日间") + "壁纸导入成功", Toast.LENGTH_SHORT).show();
+                        if (AutoDarkMonitorService.isRunning()) {
+                            AutoDarkMonitorService.notifyConfigUpdated(MainActivity.this);
+                        }
+                    });
+                } catch (Throwable t) {
+                    AppLogger.e(TAG, "导入壁纸失败: uri=" + uri, t);
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                            "导入失败: " + t.getMessage(), Toast.LENGTH_LONG).show());
+                }
+            });
             return;
         }
-        final Uri uri = data.getData();
-        final boolean isDark = (requestCode == REQ_PICK_DARK);
-        AppLogger.i(TAG, "用户选择了" + (isDark ? "夜间" : "日间") + "壁纸 URI=" + uri);
 
-        ioExecutor.execute(() -> {
+        if (requestCode == REQ_PICK_LOG_TREE) {
             try {
-                WallpaperController.importWallpaperFromUri(MainActivity.this, uri, isDark);
-                runOnUiThread(() -> {
-                    refreshWallpaperPreviewsAsync();
-                    Toast.makeText(MainActivity.this,
-                            (isDark ? "夜间" : "日间") + "壁纸导入成功", Toast.LENGTH_SHORT).show();
-                    if (AutoDarkMonitorService.isRunning()) {
-                        AutoDarkMonitorService.notifyConfigUpdated(MainActivity.this);
-                    }
-                });
+                final int takeFlags = data.getFlags()
+                        & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                getContentResolver().takePersistableUriPermission(uri, takeFlags);
             } catch (Throwable t) {
-                AppLogger.e(TAG, "导入壁纸失败: uri=" + uri, t);
-                runOnUiThread(() -> Toast.makeText(MainActivity.this,
-                        "导入失败: " + t.getMessage(), Toast.LENGTH_LONG).show());
+                AppLogger.w(TAG, "持久化 SAF 目录权限失败（尝试直接导出）: " + t.getMessage());
             }
-        });
+            prefs.setLogSafTreeUri(uri.toString());
+            AppLogger.i(TAG, "已绑定 SAF 日志导出目录 URI=" + uri);
+            refreshLogLocationText();
+
+            ioExecutor.execute(() -> {
+                try {
+                    Uri exported = AppLogger.exportLogsToSafTree(MainActivity.this, uri);
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                            "SAF 目录绑定成功，已导出验证文件: " + exported, Toast.LENGTH_LONG).show());
+                } catch (Throwable t) {
+                    AppLogger.e(TAG, "导出日志到 SAF 目录失败: uri=" + uri, t);
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                            "SAF 目录导出失败: " + t.getMessage(), Toast.LENGTH_LONG).show());
+                }
+            });
+            return;
+        }
+
+        if (requestCode == REQ_CREATE_LOG_FILE) {
+            ioExecutor.execute(() -> {
+                try {
+                    AppLogger.writeLogsToUri(MainActivity.this, uri);
+                    AppLogger.i(TAG, "日志已另存为文件 URI=" + uri);
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                            "日志另存成功: " + uri, Toast.LENGTH_LONG).show());
+                } catch (Throwable t) {
+                    AppLogger.e(TAG, "另存日志文件失败: uri=" + uri, t);
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                            "另存失败: " + t.getMessage(), Toast.LENGTH_LONG).show());
+                }
+            });
+        }
     }
 
     private void bindViews() {
@@ -278,6 +334,7 @@ public class MainActivity extends Activity {
         rbDebounce5000 = findViewById(R.id.rbDebounce5000);
         cbBootAutoStart = findViewById(R.id.cbBootAutoStart);
 
+        btnCheckPermissions = findViewById(R.id.btnCheckPermissions);
         btnPollNow = findViewById(R.id.btnPollNow);
         tvTelemetrySystem = findViewById(R.id.tvTelemetrySystem);
         tvTelemetryLight = findViewById(R.id.tvTelemetryLight);
@@ -286,6 +343,7 @@ public class MainActivity extends Activity {
         tvTelemetryDecision = findViewById(R.id.tvTelemetryDecision);
 
         tvLogFilePath = findViewById(R.id.tvLogFilePath);
+        btnSetLogPath = findViewById(R.id.btnSetLogPath);
         btnCopyLogs = findViewById(R.id.btnCopyLogs);
         btnExportLogs = findViewById(R.id.btnExportLogs);
         btnClearLogs = findViewById(R.id.btnClearLogs);
@@ -534,10 +592,15 @@ public class MainActivity extends Activity {
             AppLogger.i(TAG, "开机自启开关 -> " + isChecked);
         });
 
+        btnCheckPermissions.setOnClickListener(v -> showPermissionDiagnosticsDialog());
+
         btnPollNow.setOnClickListener(v -> {
             AppLogger.i(TAG, "用户点击【主动轮询刷新硬件状态】");
             AutoDarkMonitorService.requestPollNow(this);
         });
+
+        btnSetLogPath.setOnClickListener(v -> showLogPathConfigDialog());
+        tvLogFilePath.setOnClickListener(v -> showLogPathConfigDialog());
 
         btnCopyLogs.setOnClickListener(v -> {
             try {
@@ -566,6 +629,227 @@ public class MainActivity extends Activity {
         }));
 
         btnClearLogs.setOnClickListener(v -> AppLogger.clear());
+    }
+
+    private void refreshLogLocationText() {
+        if (tvLogFilePath != null) {
+            tvLogFilePath.setText(AppLogger.getLogLocationSummary(this) + "（点击可修改）");
+        }
+    }
+
+    private void showPermissionDiagnosticsDialog() {
+        List<String> denied = new ArrayList<>();
+        String bydReport = VehicleStateMonitor.buildBydPermissionReport(this, denied);
+        String storageState;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            storageState = "所有文件访问权限 (MANAGE_EXTERNAL_STORAGE): "
+                    + (Environment.isExternalStorageManager() ? "已授予" : "未授予");
+        } else {
+            storageState = "WRITE_EXTERNAL_STORAGE: "
+                    + (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+                    ? "已授予" : "未授予");
+        }
+
+        String fullReport = storageState + "\n\n比亚迪硬件权限状态:\n" + bydReport;
+        AppLogger.i(TAG, "用户触发权限自检:\n" + fullReport);
+
+        ScrollView sv = new ScrollView(this);
+        TextView tv = new TextView(this);
+        int pad = dpToPx(16);
+        tv.setPadding(pad, pad, pad, pad);
+        tv.setTypeface(Typeface.MONOSPACE);
+        tv.setTextSize(12f);
+        tv.setTextIsSelectable(true);
+        tv.setText(fullReport);
+        sv.addView(tv);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle("车机权限自检与动态授权")
+                .setView(sv)
+                .setNeutralButton("系统应用权限设置", (d, which) -> openAppDetailsSettings())
+                .setNegativeButton("关闭", null);
+
+        if (!denied.isEmpty()) {
+            builder.setPositiveButton("申请未授权权限(" + denied.size() + ")", (d, which) -> {
+                AppLogger.i(TAG, "用户主动申请未授予的 BYD 权限 (" + denied.size() + " 项)");
+                requestPermissions(denied.toArray(new String[0]), REQ_RUNTIME_PERMISSIONS);
+            });
+        } else {
+            builder.setPositiveButton("立即重连硬件", (d, which) -> AutoDarkMonitorService.requestPollNow(this));
+        }
+        builder.show();
+    }
+
+    private void showLogPathConfigDialog() {
+        int pad = dpToPx(16);
+        ScrollView sv = new ScrollView(this);
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(pad, pad / 2, pad, pad / 2);
+        sv.addView(root);
+
+        TextView tvDesc = new TextView(this);
+        tvDesc.setText("当前保存文件：" + AppLogger.getLogFilePath()
+                + "\n\n点击下方预设位置可一键填入（推荐 Download/BYDAutoDarkLogs，车机自带文件管理器可直接访问与拷贝到 U 盘），也可手动输入任意路径：");
+        tvDesc.setTextSize(12f);
+        root.addView(tvDesc);
+
+        final EditText etPath = new EditText(this);
+        etPath.setSingleLine(true);
+        etPath.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        etPath.setText(AppLogger.getCurrentLogDirectoryPath(this));
+        etPath.setSelection(etPath.getText().length());
+        LinearLayout.LayoutParams etParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        etParams.topMargin = dpToPx(8);
+        etParams.bottomMargin = dpToPx(8);
+        etPath.setLayoutParams(etParams);
+        root.addView(etPath);
+
+        List<File> presets = AppLogger.getPresetLogDirectories(this);
+        String[] presetLabels = new String[]{
+                "推荐 · 公共下载目录 (Download/BYDAutoDarkLogs)",
+                "公共文档目录 (Documents/BYDAutoDarkLogs)",
+                "外部存储根目录 (BYDAutoDarkLogs)",
+                "应用私有目录 (Android/data/.../files/logs)"
+        };
+        for (int i = 0; i < presets.size(); i++) {
+            final File dir = presets.get(i);
+            String label = (i < presetLabels.length ? presetLabels[i] : "预设目录") + "\n" + dir.getAbsolutePath();
+            Button btnPreset = new Button(this);
+            btnPreset.setAllCaps(false);
+            btnPreset.setText(label);
+            btnPreset.setTextSize(11f);
+            btnPreset.setOnClickListener(v -> {
+                etPath.setText(dir.getAbsolutePath());
+                etPath.setSelection(etPath.getText().length());
+            });
+            root.addView(btnPreset);
+        }
+
+        String safTree = prefs.getLogSafTreeUri();
+        if (safTree != null && !safTree.trim().isEmpty()) {
+            TextView tvSafStatus = new TextView(this);
+            tvSafStatus.setText("\n已绑定 SAF 同步导出目录：" + safTree);
+            tvSafStatus.setTextSize(11f);
+            root.addView(tvSafStatus);
+        }
+
+        Button btnPickSafTree = new Button(this);
+        btnPickSafTree.setAllCaps(false);
+        btnPickSafTree.setText("用系统文件选择器绑定导出文件夹（支持 U 盘）");
+        btnPickSafTree.setOnClickListener(v -> launchSafTreePicker());
+        root.addView(btnPickSafTree);
+
+        Button btnSaveAsFile = new Button(this);
+        btnSaveAsFile.setAllCaps(false);
+        btnSaveAsFile.setText("立即另存当前日志为文件...");
+        btnSaveAsFile.setOnClickListener(v -> launchCreateLogDocument());
+        root.addView(btnSaveAsFile);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+            Button btnAllFilesPerm = new Button(this);
+            btnAllFilesPerm.setAllCaps(false);
+            btnAllFilesPerm.setText("前往授权“所有文件访问权限”（写入自定义/根目录需要）");
+            btnAllFilesPerm.setOnClickListener(v -> openAllFilesAccessSettings());
+            root.addView(btnAllFilesPerm);
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("设置日志保存位置与导出方式")
+                .setView(sv)
+                .setPositiveButton("应用此路径", (dialog, which) -> {
+                    final String input = etPath.getText().toString().trim();
+                    ioExecutor.execute(() -> {
+                        try {
+                            File applied = AppLogger.setCustomLogDirectory(MainActivity.this, input);
+                            runOnUiThread(() -> {
+                                refreshLogLocationText();
+                                Toast.makeText(MainActivity.this,
+                                        "实时日志已切换至: " + applied.getAbsolutePath(), Toast.LENGTH_LONG).show();
+                            });
+                        } catch (Throwable t) {
+                            AppLogger.e(TAG, "切换自定义日志目录失败: " + input, t);
+                            runOnUiThread(() -> showLogDirectoryErrorDialog(input, t));
+                        }
+                    });
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void showLogDirectoryErrorDialog(String path, Throwable error) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle("自定义日志目录不可用")
+                .setMessage("路径: " + path + "\n错误原因: " + error.getMessage()
+                        + "\n\n建议：可点击“使用系统文件选择器”选择 U 盘或公共目录，或开启所有文件访问权限。")
+                .setNegativeButton("关闭", null);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+            builder.setPositiveButton("开启所有文件访问权限", (d, w) -> openAllFilesAccessSettings());
+        }
+        builder.show();
+    }
+
+    private void launchSafTreePicker() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                    | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+            startActivityForResult(intent, REQ_PICK_LOG_TREE);
+        } catch (Throwable t) {
+            AppLogger.e(TAG, "拉起系统目录选择器(ACTION_OPEN_DOCUMENT_TREE)失败", t);
+            Toast.makeText(this, "无法打开目录选择器: " + t.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void launchCreateLogDocument() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("text/plain");
+            intent.putExtra(Intent.EXTRA_TITLE,
+                    "autodark_export_" + AppLogger.formatExportTimestamp() + ".log");
+            startActivityForResult(intent, REQ_CREATE_LOG_FILE);
+        } catch (Throwable t) {
+            AppLogger.e(TAG, "拉起系统文件另存界面(ACTION_CREATE_DOCUMENT)失败", t);
+            Toast.makeText(this, "无法打开另存界面: " + t.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void openAppDetailsSettings() {
+        try {
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        } catch (Throwable t) {
+            AppLogger.e(TAG, "打开系统应用详情设置页失败", t);
+            Toast.makeText(this, "无法打开应用权限设置: " + t.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void openAllFilesAccessSettings() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            return;
+        }
+        try {
+            Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        } catch (Throwable t) {
+            AppLogger.w(TAG, "打开应用级所有文件权限设置失败，尝试打开通用设置: " + t.getMessage());
+            try {
+                startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+            } catch (Throwable t2) {
+                AppLogger.e(TAG, "打开通用所有文件访问权限设置失败", t2);
+                Toast.makeText(this, "系统未提供所有文件访问设置页，请改用系统文件选择器导出", Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+
+    private int dpToPx(int dp) {
+        return Math.round(dp * getResources().getDisplayMetrics().density);
     }
 
     private void openLiveWallpaperChooser() {
@@ -662,30 +946,36 @@ public class MainActivity extends Activity {
             }
 
             if (s.lightDeviceConnected) {
+                String warn = (s.lightDeviceError != null) ? (" | [仅轮询: " + s.lightDeviceError + "]") : "";
                 tvTelemetryLight.setText("车灯 BYDAutoLightDevice：[已连接] 小灯="
                         + VehicleStateMonitor.formatLightState(s.sideLightStatus)
                         + " | 近光=" + VehicleStateMonitor.formatLightState(s.lowBeamStatus)
                         + " | 远光=" + VehicleStateMonitor.formatLightState(s.highBeamStatus)
-                        + " | AUTO=" + VehicleStateMonitor.formatLightState(s.autoLightStatus));
-                tvTelemetryLight.setTextColor(Color.parseColor("#34D399"));
+                        + " | AUTO=" + VehicleStateMonitor.formatLightState(s.autoLightStatus)
+                        + warn);
+                tvTelemetryLight.setTextColor(Color.parseColor(s.lightDeviceError != null ? "#FBBF24" : "#34D399"));
             } else {
                 tvTelemetryLight.setText("车灯 BYDAutoLightDevice：[未连接] " + s.lightDeviceError);
                 tvTelemetryLight.setTextColor(Color.parseColor("#F87171"));
             }
 
             if (s.sensorDeviceConnected) {
+                String warn = (s.sensorDeviceError != null) ? (" | [仅轮询: " + s.sensorDeviceError + "]") : "";
                 tvTelemetrySensor.setText("光感 BYDAutoSensorDevice：[已连接] getLightIntensity()="
-                        + AppLogger.formatBydReturnCode(s.lightIntensityLevel));
-                tvTelemetrySensor.setTextColor(Color.parseColor("#34D399"));
+                        + AppLogger.formatBydReturnCode(s.lightIntensityLevel)
+                        + warn);
+                tvTelemetrySensor.setTextColor(Color.parseColor(s.sensorDeviceError != null ? "#FBBF24" : "#34D399"));
             } else {
                 tvTelemetrySensor.setText("光感 BYDAutoSensorDevice：[未连接] " + s.sensorDeviceError);
                 tvTelemetrySensor.setTextColor(Color.parseColor("#F87171"));
             }
 
             if (s.bodyworkDeviceConnected) {
+                String warn = (s.bodyworkDeviceError != null) ? (" | [仅轮询: " + s.bodyworkDeviceError + "]") : "";
                 tvTelemetryBodywork.setText("电源 BYDAutoBodyworkDevice：[已连接] powerLevel="
-                        + VehicleStateMonitor.formatPowerLevel(s.powerLevel));
-                tvTelemetryBodywork.setTextColor(Color.parseColor("#34D399"));
+                        + VehicleStateMonitor.formatPowerLevel(s.powerLevel)
+                        + warn);
+                tvTelemetryBodywork.setTextColor(Color.parseColor(s.bodyworkDeviceError != null ? "#FBBF24" : "#34D399"));
             } else {
                 tvTelemetryBodywork.setText("电源 BYDAutoBodyworkDevice：[未连接] " + s.bodyworkDeviceError);
                 tvTelemetryBodywork.setTextColor(Color.parseColor("#FBBF24"));
@@ -704,22 +994,56 @@ public class MainActivity extends Activity {
         refreshLiveWallpaperStatusText();
     }
 
-    private void requestNotificationPermissionIfNeeded() {
+    private void requestAppPermissionsIfNeeded() {
+        List<String> permsToRequest = new ArrayList<>();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                     != PackageManager.PERMISSION_GRANTED) {
-                AppLogger.i(TAG, "请求 Android 13+ 通知权限 POST_NOTIFICATIONS");
-                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},
-                        REQ_POST_NOTIFICATIONS);
+                permsToRequest.add(Manifest.permission.POST_NOTIFICATIONS);
             }
+        }
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
+            if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    != PackageManager.PERMISSION_GRANTED) {
+                permsToRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            }
+            if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE)
+                    != PackageManager.PERMISSION_GRANTED) {
+                permsToRequest.add(Manifest.permission.READ_EXTERNAL_STORAGE);
+            }
+        }
+        List<String> deniedByd = VehicleStateMonitor.checkAndLogBydPermissions(this);
+        for (String perm : deniedByd) {
+            if (!permsToRequest.contains(perm)) {
+                permsToRequest.add(perm);
+            }
+        }
+
+        if (!permsToRequest.isEmpty()) {
+            AppLogger.i(TAG, "发起运行时权限动态申请 (" + permsToRequest.size() + " 项): " + permsToRequest);
+            requestPermissions(permsToRequest.toArray(new String[0]), REQ_RUNTIME_PERMISSIONS);
         }
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQ_POST_NOTIFICATIONS && grantResults.length > 0) {
-            AppLogger.i(TAG, "POST_NOTIFICATIONS 授权结果=" + grantResults[0]);
+        if (requestCode == REQ_RUNTIME_PERMISSIONS && permissions != null && grantResults != null) {
+            StringBuilder sb = new StringBuilder();
+            boolean anyGranted = false;
+            for (int i = 0; i < permissions.length && i < grantResults.length; i++) {
+                boolean granted = (grantResults[i] == PackageManager.PERMISSION_GRANTED);
+                if (granted) {
+                    anyGranted = true;
+                }
+                sb.append(" - ").append(permissions[i]).append(": ")
+                        .append(granted ? "GRANTED" : "DENIED").append('\n');
+            }
+            AppLogger.i(TAG, "动态权限申请回调结果:\n" + sb.toString().trim());
+            if (anyGranted && AutoDarkMonitorService.isRunning()) {
+                AppLogger.i(TAG, "存在新授予权限，立即刷新并重连硬件接口");
+                AutoDarkMonitorService.requestPollNow(this);
+            }
         }
     }
 }

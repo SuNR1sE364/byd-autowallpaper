@@ -6,8 +6,9 @@ import android.content.ComponentCallbacks;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
+import android.content.pm.PermissionInfo;
 import android.content.res.Configuration;
-import android.hardware.IBYDAutoEvent;
 import android.hardware.bydauto.bodywork.AbsBYDAutoBodyworkListener;
 import android.hardware.bydauto.bodywork.BYDAutoBodyworkDevice;
 import android.hardware.bydauto.light.AbsBYDAutoLightListener;
@@ -30,12 +31,30 @@ import java.util.List;
  * 3. 比亚迪环境光传感器 (BYDAutoSensorDevice)
  * 外加整车电源档位监听 (BYDAutoBodyworkDevice) 用于上电瞬间强制校准。
  * <p>
- * 遵循“无静默 Fallback”原则：任意接口初始化或调用失败均记录完整堆栈与原始返回码。
+ * 遵循“无静默 Fallback”原则：任意接口初始化、监听注册或数据读取失败均记录完整堆栈与原始返回码。
+ * 注意：实车 DiLink 150 framework 中 AbsBYDAuto*Listener.onDataChanged(IBYDAutoEvent) 为 final 方法，
+ * 子类禁止重写 onDataChanged，只能重写具体业务回调方法（如 onLightOn/onLightIntensityChanged 等）。
  */
 public class VehicleStateMonitor {
 
     private static final String TAG = "VehicleMonitor";
     public static final int UNSET_VALUE = Integer.MIN_VALUE;
+
+    public static final String[] BYD_HARDWARE_PERMISSIONS = new String[]{
+            "android.permission.BYDAUTO_LIGHT_GET",
+            "android.permission.BYDAUTO_LIGHT_COMMON",
+            "android.permission.BYDAUTO_LIGHT_SET",
+            "android.permission.BYDAUTO_SENSOR_GET",
+            "android.permission.BYDAUTO_SENSOR_COMMON",
+            "android.permission.BYDAUTO_SENSOR_SET",
+            "android.permission.BYDAUTO_BODYWORK_GET",
+            "android.permission.BYDAUTO_BODYWORK_COMMON",
+            "android.permission.BYDAUTO_BODYWORK_SET",
+            "android.permission.BYDAUTO_SETTING_GET",
+            "android.permission.BYDAUTO_SETTING_COMMON",
+            "android.permission.BYDAUTO_INSTRUMENT_GET",
+            "android.permission.BYDAUTO_INSTRUMENT_COMMON"
+    };
 
     public interface OnStateChangedListener {
         void onStateUpdated(TelemetrySnapshot snapshot);
@@ -127,15 +146,96 @@ public class VehicleStateMonitor {
         }
     }
 
+    /**
+     * 检查全部比亚迪硬件权限在当前设备上的授予状态及系统 protectionLevel，
+     * 返回所有已声明且当前未授予（DENIED）的权限列表以供动态申请。
+     */
+    public static List<String> checkAndLogBydPermissions(Context context) {
+        List<String> denied = new ArrayList<>();
+        String report = buildBydPermissionReport(context, denied);
+        AppLogger.i(TAG, "比亚迪硬件权限诊断报告:\n" + report);
+        return denied;
+    }
+
+    public static String buildBydPermissionReport(Context context, List<String> deniedOut) {
+        Context appCtx = context.getApplicationContext();
+        PackageManager pm = appCtx.getPackageManager();
+        StringBuilder sb = new StringBuilder();
+        for (String perm : BYD_HARDWARE_PERMISSIONS) {
+            String shortName = perm.replace("android.permission.", "");
+            boolean definedInSystem = true;
+            String levelDesc;
+            try {
+                PermissionInfo info = pm.getPermissionInfo(perm, 0);
+                levelDesc = formatProtectionLevel(info);
+            } catch (PackageManager.NameNotFoundException e) {
+                definedInSystem = false;
+                levelDesc = "系统未定义";
+            } catch (Throwable t) {
+                levelDesc = "查询异常(" + t.getClass().getSimpleName() + ")";
+            }
+
+            boolean granted = (appCtx.checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED);
+            if (!granted && definedInSystem && deniedOut != null) {
+                deniedOut.add(perm);
+            }
+            sb.append(" - ").append(shortName)
+                    .append(": ").append(granted ? "GRANTED" : "DENIED")
+                    .append(" [protection=").append(levelDesc).append("]\n");
+        }
+        return sb.toString().trim();
+    }
+
+    private static String formatProtectionLevel(PermissionInfo info) {
+        int base = info.getProtection();
+        String baseName;
+        switch (base) {
+            case PermissionInfo.PROTECTION_NORMAL:
+                baseName = "normal";
+                break;
+            case PermissionInfo.PROTECTION_DANGEROUS:
+                baseName = "dangerous";
+                break;
+            case PermissionInfo.PROTECTION_SIGNATURE:
+                baseName = "signature";
+                break;
+            case PermissionInfo.PROTECTION_SIGNATURE_OR_SYSTEM:
+                baseName = "signatureOrSystem";
+                break;
+            case PermissionInfo.PROTECTION_INTERNAL:
+                baseName = "internal";
+                break;
+            default:
+                baseName = "unknown(" + base + ")";
+                break;
+        }
+        int flags = info.getProtectionFlags();
+        StringBuilder sb = new StringBuilder(baseName);
+        if ((flags & PermissionInfo.PROTECTION_FLAG_PRIVILEGED) != 0) {
+            sb.append("|privileged");
+        }
+        if ((flags & PermissionInfo.PROTECTION_FLAG_DEVELOPMENT) != 0) {
+            sb.append("|development");
+        }
+        if ((flags & PermissionInfo.PROTECTION_FLAG_PREINSTALLED) != 0) {
+            sb.append("|preinstalled");
+        }
+        if ((flags & PermissionInfo.PROTECTION_FLAG_APPOP) != 0) {
+            sb.append("|appop");
+        }
+        return sb.toString();
+    }
+
     public synchronized void start() {
         if (started) {
-            AppLogger.i(TAG, "VehicleStateMonitor 已处于启动状态，执行一次全量轮询");
+            AppLogger.i(TAG, "VehicleStateMonitor 已处于启动状态，执行一次全量轮询与重连检查");
             pollAllStatesNow();
             return;
         }
         started = true;
         AppLogger.i(TAG, "正在启动车机状态与比亚迪硬件监听器...");
 
+        checkAndLogBydPermissions(appContext);
         registerSystemUiModeListeners();
         initLightDevice();
         initSensorDevice();
@@ -169,36 +269,74 @@ public class VehicleStateMonitor {
             configReceiver = null;
         }
 
-        if (lightBridge != null) {
-            lightBridge.release();
-            lightBridge = null;
-        }
-        if (sensorBridge != null) {
-            sensorBridge.release();
-            sensorBridge = null;
-        }
-        if (bodyworkBridge != null) {
-            bodyworkBridge.release();
-            bodyworkBridge = null;
-        }
+        releaseLightDevice();
+        releaseSensorDevice();
+        releaseBodyworkDevice();
     }
 
-    public void pollAllStatesNow() {
-        AppLogger.i(TAG, "开始主动轮询所有信号源...");
-        readSystemUiMode();
-        if (lightBridge != null) {
-            lightBridge.poll();
+    public synchronized void pollAllStatesNow() {
+        AppLogger.i(TAG, "开始主动轮询并检查所有信号源...");
+        readSystemUiMode(true);
+
+        boolean lightConnected;
+        boolean sensorConnected;
+        boolean bodyworkConnected;
+        synchronized (stateLock) {
+            lightConnected = snapshot.lightDeviceConnected;
+            sensorConnected = snapshot.sensorDeviceConnected;
+            bodyworkConnected = snapshot.bodyworkDeviceConnected;
         }
-        if (sensorBridge != null) {
-            sensorBridge.poll();
+
+        if (lightBridge == null || !lightConnected) {
+            releaseLightDevice();
+            initLightDevice();
+        } else {
+            lightBridge.poll(true);
         }
-        if (bodyworkBridge != null) {
-            bodyworkBridge.poll();
+
+        if (sensorBridge == null || !sensorConnected) {
+            releaseSensorDevice();
+            initSensorDevice();
+        } else {
+            sensorBridge.poll(true);
         }
+
+        if (bodyworkBridge == null || !bodyworkConnected) {
+            releaseBodyworkDevice();
+            initBodyworkDevice();
+        } else {
+            bodyworkBridge.poll(true);
+        }
+
         synchronized (stateLock) {
             snapshot.lastUpdatedTimestamp = System.currentTimeMillis();
         }
         notifyListener();
+    }
+
+    /**
+     * 后台轻量级定时轮询（仅对已连接硬件轮询，且仅在数值变化时打日志与通知，作为回调监听失效时的兜底同步）。
+     */
+    public void pollConnectedHardwareQuietly() {
+        if (!started) {
+            return;
+        }
+        boolean anyChanged = readSystemUiMode(false);
+        if (lightBridge != null && lightBridge.isConnected()) {
+            anyChanged |= lightBridge.poll(false);
+        }
+        if (sensorBridge != null && sensorBridge.isConnected()) {
+            anyChanged |= sensorBridge.poll(false);
+        }
+        if (bodyworkBridge != null && bodyworkBridge.isConnected()) {
+            anyChanged |= bodyworkBridge.poll(false);
+        }
+        if (anyChanged) {
+            synchronized (stateLock) {
+                snapshot.lastUpdatedTimestamp = System.currentTimeMillis();
+            }
+            notifyListener();
+        }
     }
 
     private void registerSystemUiModeListeners() {
@@ -208,7 +346,7 @@ public class VehicleStateMonitor {
                 int nightMask = newConfig.uiMode & Configuration.UI_MODE_NIGHT_MASK;
                 AppLogger.i(TAG, "收到 ComponentCallbacks.onConfigurationChanged，uiMode nightMask="
                         + formatSystemNightMask(nightMask));
-                readSystemUiMode();
+                readSystemUiMode(true);
                 notifyListener();
             }
 
@@ -223,7 +361,7 @@ public class VehicleStateMonitor {
             @Override
             public void onReceive(Context context, Intent intent) {
                 AppLogger.i(TAG, "收到系统广播 ACTION_CONFIGURATION_CHANGED");
-                readSystemUiMode();
+                readSystemUiMode(true);
                 notifyListener();
             }
         };
@@ -231,7 +369,7 @@ public class VehicleStateMonitor {
         appContext.registerReceiver(configReceiver, filter);
     }
 
-    private void readSystemUiMode() {
+    private boolean readSystemUiMode(boolean verboseLog) {
         try {
             Configuration cfg = appContext.getResources().getConfiguration();
             int nightMask = cfg.uiMode & Configuration.UI_MODE_NIGHT_MASK;
@@ -240,19 +378,27 @@ public class VehicleStateMonitor {
             if (uiModeManager != null) {
                 managerNightMode = uiModeManager.getNightMode();
             }
+            boolean changed;
             synchronized (stateLock) {
+                changed = (snapshot.systemUiModeNightMask != nightMask
+                        || snapshot.uiModeManagerNightMode != managerNightMode
+                        || snapshot.systemError != null);
                 snapshot.systemUiModeNightMask = nightMask;
                 snapshot.uiModeManagerNightMode = managerNightMode;
                 snapshot.systemError = null;
                 snapshot.lastUpdatedTimestamp = System.currentTimeMillis();
             }
-            AppLogger.i(TAG, "系统 uiMode 轮询: mask=" + formatSystemNightMask(nightMask)
-                    + ", UiModeManager.getNightMode()=" + managerNightMode);
+            if (verboseLog || changed) {
+                AppLogger.i(TAG, "系统 uiMode 轮询: mask=" + formatSystemNightMask(nightMask)
+                        + ", UiModeManager.getNightMode()=" + managerNightMode);
+            }
+            return changed;
         } catch (Throwable t) {
             AppLogger.e(TAG, "读取系统 uiMode 失败", t);
             synchronized (stateLock) {
-                snapshot.systemError = t.getClass().getSimpleName() + ": " + t.getMessage();
+                snapshot.systemError = formatThrowable(t);
             }
+            return true;
         }
     }
 
@@ -260,9 +406,16 @@ public class VehicleStateMonitor {
         try {
             lightBridge = new LightDeviceBridge(appContext, new LightDeviceBridge.Callback() {
                 @Override
-                public void onLightValuesUpdated(boolean connected, String error,
-                                                 int side, int lowBeam, int highBeam, int autoStatus) {
+                public boolean onLightValuesUpdated(boolean connected, String error,
+                                                    int side, int lowBeam, int highBeam, int autoStatus) {
+                    boolean changed;
                     synchronized (stateLock) {
+                        changed = (snapshot.lightDeviceConnected != connected
+                                || !equalsNullable(snapshot.lightDeviceError, error)
+                                || snapshot.sideLightStatus != side
+                                || snapshot.lowBeamStatus != lowBeam
+                                || snapshot.highBeamStatus != highBeam
+                                || snapshot.autoLightStatus != autoStatus);
                         snapshot.lightDeviceConnected = connected;
                         snapshot.lightDeviceError = error;
                         snapshot.sideLightStatus = side;
@@ -271,12 +424,12 @@ public class VehicleStateMonitor {
                         snapshot.autoLightStatus = autoStatus;
                         snapshot.lastUpdatedTimestamp = System.currentTimeMillis();
                     }
-                    notifyListener();
+                    return changed;
                 }
-            });
+            }, this::notifyListener);
             lightBridge.init();
         } catch (Throwable t) {
-            String err = t.getClass().getSimpleName() + ": " + t.getMessage();
+            String err = formatThrowable(t);
             AppLogger.e(TAG, "初始化 BYDAutoLightDevice 桥接类失败", t);
             synchronized (stateLock) {
                 snapshot.lightDeviceConnected = false;
@@ -286,23 +439,34 @@ public class VehicleStateMonitor {
         }
     }
 
+    private void releaseLightDevice() {
+        if (lightBridge != null) {
+            lightBridge.release();
+            lightBridge = null;
+        }
+    }
+
     private void initSensorDevice() {
         try {
             sensorBridge = new SensorDeviceBridge(appContext, new SensorDeviceBridge.Callback() {
                 @Override
-                public void onSensorUpdated(boolean connected, String error, int level) {
+                public boolean onSensorUpdated(boolean connected, String error, int level) {
+                    boolean changed;
                     synchronized (stateLock) {
+                        changed = (snapshot.sensorDeviceConnected != connected
+                                || !equalsNullable(snapshot.sensorDeviceError, error)
+                                || snapshot.lightIntensityLevel != level);
                         snapshot.sensorDeviceConnected = connected;
                         snapshot.sensorDeviceError = error;
                         snapshot.lightIntensityLevel = level;
                         snapshot.lastUpdatedTimestamp = System.currentTimeMillis();
                     }
-                    notifyListener();
+                    return changed;
                 }
-            });
+            }, this::notifyListener);
             sensorBridge.init();
         } catch (Throwable t) {
-            String err = t.getClass().getSimpleName() + ": " + t.getMessage();
+            String err = formatThrowable(t);
             AppLogger.e(TAG, "初始化 BYDAutoSensorDevice 桥接类失败", t);
             synchronized (stateLock) {
                 snapshot.sensorDeviceConnected = false;
@@ -312,12 +476,23 @@ public class VehicleStateMonitor {
         }
     }
 
+    private void releaseSensorDevice() {
+        if (sensorBridge != null) {
+            sensorBridge.release();
+            sensorBridge = null;
+        }
+    }
+
     private void initBodyworkDevice() {
         try {
             bodyworkBridge = new BodyworkDeviceBridge(appContext, new BodyworkDeviceBridge.Callback() {
                 @Override
-                public void onPowerUpdated(boolean connected, String error, int powerLevel, boolean justPoweredOn) {
+                public boolean onPowerUpdated(boolean connected, String error, int powerLevel, boolean justPoweredOn) {
+                    boolean changed;
                     synchronized (stateLock) {
+                        changed = (snapshot.bodyworkDeviceConnected != connected
+                                || !equalsNullable(snapshot.bodyworkDeviceError, error)
+                                || snapshot.powerLevel != powerLevel);
                         snapshot.bodyworkDeviceConnected = connected;
                         snapshot.bodyworkDeviceError = error;
                         snapshot.powerLevel = powerLevel;
@@ -326,19 +501,25 @@ public class VehicleStateMonitor {
                     if (justPoweredOn) {
                         AppLogger.i(TAG, "检测到车辆电源切换为 ON，重新轮询全部传感器与车灯状态");
                         pollAllStatesNow();
-                    } else {
-                        notifyListener();
                     }
+                    return changed;
                 }
-            });
+            }, this::notifyListener);
             bodyworkBridge.init();
         } catch (Throwable t) {
-            String err = t.getClass().getSimpleName() + ": " + t.getMessage();
+            String err = formatThrowable(t);
             AppLogger.e(TAG, "初始化 BYDAutoBodyworkDevice 桥接类失败", t);
             synchronized (stateLock) {
                 snapshot.bodyworkDeviceConnected = false;
                 snapshot.bodyworkDeviceError = err;
             }
+            bodyworkBridge = null;
+        }
+    }
+
+    private void releaseBodyworkDevice() {
+        if (bodyworkBridge != null) {
+            bodyworkBridge.release();
             bodyworkBridge = null;
         }
     }
@@ -431,9 +612,9 @@ public class VehicleStateMonitor {
 
         if (!onLights.isEmpty()) {
             return new EvaluationResult(true, true,
-                    "车灯触发暗色 (" + String.join(", ", onLights) + ")", null);
+                    "车灯触发暗色 (" + String.join(", ", onLights) + ")", s.lightDeviceError);
         }
-        return new EvaluationResult(true, false, "已选车灯均关闭 -> 日间亮色", null);
+        return new EvaluationResult(true, false, "已选车灯均关闭 -> 日间亮色", s.lightDeviceError);
     }
 
     private EvaluationResult evaluateBydSensor(TelemetrySnapshot s, AppPrefs prefs) {
@@ -452,7 +633,7 @@ public class VehicleStateMonitor {
         String cmp = darkWhenLte ? "<=" : ">=";
         return new EvaluationResult(true, isDark,
                 "光感 Level=" + level + " (" + (isDark ? "满足" : "不满足")
-                        + " " + cmp + " L" + threshold + ")", null);
+                        + " " + cmp + " L" + threshold + ")", s.sensorDeviceError);
     }
 
     private EvaluationResult evaluateAnyDark(TelemetrySnapshot s, AppPrefs prefs) {
@@ -540,104 +721,141 @@ public class VehicleStateMonitor {
         }
     }
 
+    private static String formatThrowable(Throwable t) {
+        if (t == null) {
+            return "unknown error";
+        }
+        return t.getClass().getSimpleName() + ": " + t.getMessage();
+    }
+
+    private static boolean equalsNullable(String a, String b) {
+        return a == null ? b == null : a.equals(b);
+    }
+
     /**
-     * 隔离引用 BYDAutoLightDevice，防止非 BYD 环境验证类时直接崩溃，同时在 BYD 车机上原生强类型调用。
+     * 隔离引用 BYDAutoLightDevice：
+     * 1. 不重写 final 方法 onDataChanged(IBYDAutoEvent)，避免 ART 抛出 LinkageError；
+     * 2. registerListener 与 poll() 解耦，即使监听注册失败也会继续尝试主动读取硬件状态。
      */
     private static final class LightDeviceBridge {
         interface Callback {
-            void onLightValuesUpdated(boolean connected, String error,
-                                      int side, int lowBeam, int highBeam, int autoStatus);
+            boolean onLightValuesUpdated(boolean connected, String error,
+                                         int side, int lowBeam, int highBeam, int autoStatus);
         }
 
         private final Context context;
         private final Callback callback;
+        private final Runnable asyncNotify;
         private BYDAutoLightDevice device;
         private AbsBYDAutoLightListener lightListener;
+        private String listenerWarning;
+        private volatile boolean connected;
 
-        LightDeviceBridge(Context context, Callback callback) {
+        LightDeviceBridge(Context context, Callback callback, Runnable asyncNotify) {
             this.context = context;
             this.callback = callback;
+            this.asyncNotify = asyncNotify;
+        }
+
+        boolean isConnected() {
+            return connected && device != null;
         }
 
         void init() {
             AppLogger.i(TAG, "正在获取 BYDAutoLightDevice.getInstance()...");
             device = BYDAutoLightDevice.getInstance(context);
             if (device == null) {
+                connected = false;
                 String msg = "BYDAutoLightDevice.getInstance(context) 返回 null（可能缺少 BYDAUTO_LIGHT_GET 权限或服务未就绪）";
                 AppLogger.e(TAG, msg);
                 callback.onLightValuesUpdated(false, msg,
                         UNSET_VALUE, UNSET_VALUE, UNSET_VALUE, UNSET_VALUE);
                 return;
             }
-            lightListener = new AbsBYDAutoLightListener() {
-                @Override
-                public void onLightOn(int area) {
-                    AppLogger.i(TAG, "回调 AbsBYDAutoLightListener.onLightOn(area=" + area + ")");
-                    poll();
-                }
 
-                @Override
-                public void onLightOff(int area) {
-                    AppLogger.i(TAG, "回调 AbsBYDAutoLightListener.onLightOff(area=" + area + ")");
-                    poll();
-                }
-
-                @Override
-                public void onLightAutoSwitchOn() {
-                    AppLogger.i(TAG, "回调 AbsBYDAutoLightListener.onLightAutoSwitchOn()");
-                    poll();
-                }
-
-                @Override
-                public void onLightAutoSwitchOff() {
-                    AppLogger.i(TAG, "回调 AbsBYDAutoLightListener.onLightAutoSwitchOff()");
-                    poll();
-                }
-
-                @Override
-                public void onAFSSwitchStateChange(int state) {
-                    AppLogger.i(TAG, "回调 AbsBYDAutoLightListener.onAFSSwitchStateChange(state=" + state + ")");
-                }
-
-                @Override
-                public void onDataChanged(IBYDAutoEvent event) {
-                    AppLogger.i(TAG, "回调 AbsBYDAutoLightListener.onDataChanged: " + formatEvent(event));
-                    try {
-                        super.onDataChanged(event);
-                    } catch (Throwable t) {
-                        AppLogger.e(TAG, "super.onDataChanged(BYDAutoLight) 执行异常", t);
+            listenerWarning = null;
+            try {
+                lightListener = new AbsBYDAutoLightListener() {
+                    @Override
+                    public void onLightOn(int area) {
+                        AppLogger.i(TAG, "回调 AbsBYDAutoLightListener.onLightOn(area=" + area + ")");
+                        if (poll(true)) {
+                            asyncNotify.run();
+                        }
                     }
-                    poll();
-                }
-            };
-            device.registerListener(lightListener);
-            AppLogger.i(TAG, "BYDAutoLightDevice 初始化并注册监听成功");
-            poll();
+
+                    @Override
+                    public void onLightOff(int area) {
+                        AppLogger.i(TAG, "回调 AbsBYDAutoLightListener.onLightOff(area=" + area + ")");
+                        if (poll(true)) {
+                            asyncNotify.run();
+                        }
+                    }
+
+                    @Override
+                    public void onLightAutoSwitchOn() {
+                        AppLogger.i(TAG, "回调 AbsBYDAutoLightListener.onLightAutoSwitchOn()");
+                        if (poll(true)) {
+                            asyncNotify.run();
+                        }
+                    }
+
+                    @Override
+                    public void onLightAutoSwitchOff() {
+                        AppLogger.i(TAG, "回调 AbsBYDAutoLightListener.onLightAutoSwitchOff()");
+                        if (poll(true)) {
+                            asyncNotify.run();
+                        }
+                    }
+
+                    @Override
+                    public void onAFSSwitchStateChange(int state) {
+                        AppLogger.i(TAG, "回调 AbsBYDAutoLightListener.onAFSSwitchStateChange(state=" + state + ")");
+                    }
+                };
+                device.registerListener(lightListener);
+                AppLogger.i(TAG, "BYDAutoLightDevice 初始化并注册监听成功");
+            } catch (Throwable t) {
+                lightListener = null;
+                listenerWarning = "监听注册异常(" + formatThrowable(t) + ")";
+                AppLogger.e(TAG, "BYDAutoLightDevice 注册监听失败（将继续尝试直接轮询读取）", t);
+            }
+
+            poll(true);
         }
 
-        void poll() {
+        boolean poll(boolean verboseLog) {
             if (device == null) {
-                return;
+                return false;
             }
             try {
                 int side = device.getLightStatus(BYDAutoLightDevice.LIGHT_SIDE);
                 int low = device.getLightStatus(BYDAutoLightDevice.LIGHT_LOW_BEAM);
                 int high = device.getLightStatus(BYDAutoLightDevice.LIGHT_HIGH_BEAM);
                 int auto = device.getLightAutoStatus();
-                AppLogger.i(TAG, "车灯轮询: SIDE=" + formatLightState(side)
-                        + ", LOW_BEAM=" + formatLightState(low)
-                        + ", HIGH_BEAM=" + formatLightState(high)
-                        + ", AUTO=" + formatLightState(auto));
-                callback.onLightValuesUpdated(true, null, side, low, high, auto);
+                connected = true;
+                boolean changed = callback.onLightValuesUpdated(true, listenerWarning, side, low, high, auto);
+                if (verboseLog || changed) {
+                    AppLogger.i(TAG, "车灯轮询: SIDE=" + formatLightState(side)
+                            + ", LOW_BEAM=" + formatLightState(low)
+                            + ", HIGH_BEAM=" + formatLightState(high)
+                            + ", AUTO=" + formatLightState(auto));
+                }
+                return changed;
             } catch (Throwable t) {
+                connected = false;
+                String err = formatThrowable(t);
+                if (listenerWarning != null) {
+                    err = err + " | " + listenerWarning;
+                }
                 AppLogger.e(TAG, "轮询 BYDAutoLightDevice 状态异常", t);
-                callback.onLightValuesUpdated(false,
-                        t.getClass().getSimpleName() + ": " + t.getMessage(),
+                return callback.onLightValuesUpdated(false, err,
                         UNSET_VALUE, UNSET_VALUE, UNSET_VALUE, UNSET_VALUE);
             }
         }
 
         void release() {
+            connected = false;
             if (device != null && lightListener != null) {
                 try {
                     device.unregisterListener(lightListener);
@@ -655,68 +873,87 @@ public class VehicleStateMonitor {
      */
     private static final class SensorDeviceBridge {
         interface Callback {
-            void onSensorUpdated(boolean connected, String error, int level);
+            boolean onSensorUpdated(boolean connected, String error, int level);
         }
 
         private final Context context;
         private final Callback callback;
+        private final Runnable asyncNotify;
         private BYDAutoSensorDevice device;
         private AbsBYDAutoSensorListener sensorListener;
+        private String listenerWarning;
+        private volatile boolean connected;
 
-        SensorDeviceBridge(Context context, Callback callback) {
+        SensorDeviceBridge(Context context, Callback callback, Runnable asyncNotify) {
             this.context = context;
             this.callback = callback;
+            this.asyncNotify = asyncNotify;
+        }
+
+        boolean isConnected() {
+            return connected && device != null;
         }
 
         void init() {
             AppLogger.i(TAG, "正在获取 BYDAutoSensorDevice.getInstance()...");
             device = BYDAutoSensorDevice.getInstance(context);
             if (device == null) {
+                connected = false;
                 String msg = "BYDAutoSensorDevice.getInstance(context) 返回 null（可能缺少 BYDAUTO_SENSOR_GET 权限或服务未就绪）";
                 AppLogger.e(TAG, msg);
                 callback.onSensorUpdated(false, msg, UNSET_VALUE);
                 return;
             }
-            sensorListener = new AbsBYDAutoSensorListener() {
-                @Override
-                public void onLightIntensityChanged(int level) {
-                    AppLogger.i(TAG, "回调 AbsBYDAutoSensorListener.onLightIntensityChanged(level="
-                            + AppLogger.formatBydReturnCode(level) + ")");
-                    callback.onSensorUpdated(true, null, level);
-                }
 
-                @Override
-                public void onDataChanged(IBYDAutoEvent event) {
-                    AppLogger.i(TAG, "回调 AbsBYDAutoSensorListener.onDataChanged: " + formatEvent(event));
-                    try {
-                        super.onDataChanged(event);
-                    } catch (Throwable t) {
-                        AppLogger.e(TAG, "super.onDataChanged(BYDAutoSensor) 执行异常", t);
+            listenerWarning = null;
+            try {
+                sensorListener = new AbsBYDAutoSensorListener() {
+                    @Override
+                    public void onLightIntensityChanged(int level) {
+                        AppLogger.i(TAG, "回调 AbsBYDAutoSensorListener.onLightIntensityChanged(level="
+                                + AppLogger.formatBydReturnCode(level) + ")");
+                        connected = true;
+                        if (callback.onSensorUpdated(true, listenerWarning, level)) {
+                            asyncNotify.run();
+                        }
                     }
-                    poll();
-                }
-            };
-            device.registerListener(sensorListener);
-            AppLogger.i(TAG, "BYDAutoSensorDevice 初始化并注册监听成功");
-            poll();
+                };
+                device.registerListener(sensorListener);
+                AppLogger.i(TAG, "BYDAutoSensorDevice 初始化并注册监听成功");
+            } catch (Throwable t) {
+                sensorListener = null;
+                listenerWarning = "监听注册异常(" + formatThrowable(t) + ")";
+                AppLogger.e(TAG, "BYDAutoSensorDevice 注册监听失败（将继续尝试直接轮询读取）", t);
+            }
+
+            poll(true);
         }
 
-        void poll() {
+        boolean poll(boolean verboseLog) {
             if (device == null) {
-                return;
+                return false;
             }
             try {
                 int level = device.getLightIntensity();
-                AppLogger.i(TAG, "光感轮询: getLightIntensity()=" + AppLogger.formatBydReturnCode(level));
-                callback.onSensorUpdated(true, null, level);
+                connected = true;
+                boolean changed = callback.onSensorUpdated(true, listenerWarning, level);
+                if (verboseLog || changed) {
+                    AppLogger.i(TAG, "光感轮询: getLightIntensity()=" + AppLogger.formatBydReturnCode(level));
+                }
+                return changed;
             } catch (Throwable t) {
+                connected = false;
+                String err = formatThrowable(t);
+                if (listenerWarning != null) {
+                    err = err + " | " + listenerWarning;
+                }
                 AppLogger.e(TAG, "轮询 BYDAutoSensorDevice.getLightIntensity() 异常", t);
-                callback.onSensorUpdated(false,
-                        t.getClass().getSimpleName() + ": " + t.getMessage(), UNSET_VALUE);
+                return callback.onSensorUpdated(false, err, UNSET_VALUE);
             }
         }
 
         void release() {
+            connected = false;
             if (device != null && sensorListener != null) {
                 try {
                     device.unregisterListener(sensorListener);
@@ -734,71 +971,92 @@ public class VehicleStateMonitor {
      */
     private static final class BodyworkDeviceBridge {
         interface Callback {
-            void onPowerUpdated(boolean connected, String error, int powerLevel, boolean justPoweredOn);
+            boolean onPowerUpdated(boolean connected, String error, int powerLevel, boolean justPoweredOn);
         }
 
         private final Context context;
         private final Callback callback;
+        private final Runnable asyncNotify;
         private BYDAutoBodyworkDevice device;
         private AbsBYDAutoBodyworkListener bodyworkListener;
         private int lastPowerLevel = UNSET_VALUE;
+        private String listenerWarning;
+        private volatile boolean connected;
 
-        BodyworkDeviceBridge(Context context, Callback callback) {
+        BodyworkDeviceBridge(Context context, Callback callback, Runnable asyncNotify) {
             this.context = context;
             this.callback = callback;
+            this.asyncNotify = asyncNotify;
+        }
+
+        boolean isConnected() {
+            return connected && device != null;
         }
 
         void init() {
             AppLogger.i(TAG, "正在获取 BYDAutoBodyworkDevice.getInstance()...");
             device = BYDAutoBodyworkDevice.getInstance(context);
             if (device == null) {
+                connected = false;
                 String msg = "BYDAutoBodyworkDevice.getInstance(context) 返回 null";
                 AppLogger.e(TAG, msg);
                 callback.onPowerUpdated(false, msg, UNSET_VALUE, false);
                 return;
             }
-            bodyworkListener = new AbsBYDAutoBodyworkListener() {
-                @Override
-                public void onPowerLevelChanged(int level) {
-                    AppLogger.i(TAG, "回调 AbsBYDAutoBodyworkListener.onPowerLevelChanged("
-                            + formatPowerLevel(level) + ")");
-                    boolean poweredOn = (level == BYDAutoBodyworkDevice.BODYWORK_POWER_LEVEL_ON
-                            && lastPowerLevel != BYDAutoBodyworkDevice.BODYWORK_POWER_LEVEL_ON);
-                    lastPowerLevel = level;
-                    callback.onPowerUpdated(true, null, level, poweredOn);
-                }
 
-                @Override
-                public void onDataChanged(IBYDAutoEvent event) {
-                    try {
-                        super.onDataChanged(event);
-                    } catch (Throwable t) {
-                        AppLogger.e(TAG, "super.onDataChanged(BYDAutoBodywork) 执行异常", t);
+            listenerWarning = null;
+            try {
+                bodyworkListener = new AbsBYDAutoBodyworkListener() {
+                    @Override
+                    public void onPowerLevelChanged(int level) {
+                        AppLogger.i(TAG, "回调 AbsBYDAutoBodyworkListener.onPowerLevelChanged("
+                                + formatPowerLevel(level) + ")");
+                        boolean poweredOn = (level == BYDAutoBodyworkDevice.BODYWORK_POWER_LEVEL_ON
+                                && lastPowerLevel != BYDAutoBodyworkDevice.BODYWORK_POWER_LEVEL_ON);
+                        lastPowerLevel = level;
+                        connected = true;
+                        if (callback.onPowerUpdated(true, listenerWarning, level, poweredOn) && !poweredOn) {
+                            asyncNotify.run();
+                        }
                     }
-                }
-            };
-            device.registerListener(bodyworkListener);
-            AppLogger.i(TAG, "BYDAutoBodyworkDevice 初始化并注册监听成功");
-            poll();
+                };
+                device.registerListener(bodyworkListener);
+                AppLogger.i(TAG, "BYDAutoBodyworkDevice 初始化并注册监听成功");
+            } catch (Throwable t) {
+                bodyworkListener = null;
+                listenerWarning = "监听注册异常(" + formatThrowable(t) + ")";
+                AppLogger.e(TAG, "BYDAutoBodyworkDevice 注册监听失败（将继续尝试直接轮询读取）", t);
+            }
+
+            poll(true);
         }
 
-        void poll() {
+        boolean poll(boolean verboseLog) {
             if (device == null) {
-                return;
+                return false;
             }
             try {
                 int level = device.getPowerLevel();
                 lastPowerLevel = level;
-                AppLogger.i(TAG, "电源档位轮询: getPowerLevel()=" + formatPowerLevel(level));
-                callback.onPowerUpdated(true, null, level, false);
+                connected = true;
+                boolean changed = callback.onPowerUpdated(true, listenerWarning, level, false);
+                if (verboseLog || changed) {
+                    AppLogger.i(TAG, "电源档位轮询: getPowerLevel()=" + formatPowerLevel(level));
+                }
+                return changed;
             } catch (Throwable t) {
+                connected = false;
+                String err = formatThrowable(t);
+                if (listenerWarning != null) {
+                    err = err + " | " + listenerWarning;
+                }
                 AppLogger.e(TAG, "轮询 BYDAutoBodyworkDevice.getPowerLevel() 异常", t);
-                callback.onPowerUpdated(false,
-                        t.getClass().getSimpleName() + ": " + t.getMessage(), UNSET_VALUE, false);
+                return callback.onPowerUpdated(false, err, UNSET_VALUE, false);
             }
         }
 
         void release() {
+            connected = false;
             if (device != null && bodyworkListener != null) {
                 try {
                     device.unregisterListener(bodyworkListener);
@@ -809,16 +1067,5 @@ public class VehicleStateMonitor {
             bodyworkListener = null;
             device = null;
         }
-    }
-
-    private static String formatEvent(IBYDAutoEvent event) {
-        if (event == null) {
-            return "null";
-        }
-        return "deviceType=" + event.getDeviceType()
-                + ", eventType=" + event.getEventType()
-                + ", value=" + event.getValue()
-                + ", doubleValue=" + event.getDoubleValue()
-                + ", data=" + event.getData();
     }
 }

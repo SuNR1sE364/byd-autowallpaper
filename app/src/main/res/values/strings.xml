@@ -18,6 +18,8 @@
     <string name="btn_reset_wallpapers">重置为内置测试壁纸</string>
 
     <string name="btn_poll_now">主动轮询刷新硬件状态</string>
+    <string name="btn_check_permissions">权限自检/授权</string>
+    <string name="btn_set_log_path">设置保存位置</string>
     <string name="btn_copy_logs">复制全部日志</string>
     <string name="btn_export_logs">导出日志文件</string>
     <string name="btn_clear_logs">清空日志</string>

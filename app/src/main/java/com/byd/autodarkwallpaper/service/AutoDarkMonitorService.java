@@ -31,6 +31,7 @@ public class AutoDarkMonitorService extends Service {
     private static final String TAG = "MonitorSvc";
     private static final String CHANNEL_ID = "byd_autodark_monitor_channel";
     private static final int NOTIFICATION_ID = 1008;
+    private static final long QUIET_POLL_INTERVAL_MS = 2000L;
 
     public static final String ACTION_START_MONITOR = "com.byd.autodarkwallpaper.ACTION_START_MONITOR";
     public static final String ACTION_POLL_NOW = "com.byd.autodarkwallpaper.ACTION_POLL_NOW";
@@ -56,6 +57,16 @@ public class AutoDarkMonitorService extends Service {
     private Runnable pendingApplyRunnable;
     private Boolean pendingTargetDark = null;
     private boolean hasAppliedOnce = false;
+
+    private final Runnable quietPollRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (activeInstance == AutoDarkMonitorService.this && stateMonitor != null) {
+                stateMonitor.pollConnectedHardwareQuietly();
+                mainHandler.postDelayed(this, QUIET_POLL_INTERVAL_MS);
+            }
+        }
+    };
 
     public static boolean isRunning() {
         return activeInstance != null;
@@ -138,6 +149,7 @@ public class AutoDarkMonitorService extends Service {
             evaluateAndSchedule(firstApply, false);
         });
         stateMonitor.start();
+        mainHandler.postDelayed(quietPollRunnable, QUIET_POLL_INTERVAL_MS);
     }
 
     @Override
@@ -166,6 +178,7 @@ public class AutoDarkMonitorService extends Service {
     @Override
     public void onDestroy() {
         activeInstance = null;
+        mainHandler.removeCallbacks(quietPollRunnable);
         cancelPendingApply();
         if (stateMonitor != null) {
             stateMonitor.stop();
