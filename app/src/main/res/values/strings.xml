@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">比亚迪自动深浅壁纸</string>
+    <string name="live_wallpaper_name">比亚迪亮/暗自动壁纸引擎</string>
+    <string name="live_wallpaper_description">跟随比亚迪车机深浅色模式、车灯或光感自动平滑切换日间与夜间壁纸（DiLink 150 适配版）</string>
+
+    <string name="app_subtitle">BYD · DiLink 150 双模式自动亮/暗壁纸</string>
+
+    <string name="btn_start_service">启动监控服务</string>
+    <string name="btn_restart_service">重启监控服务</string>
+    <string name="btn_stop_service">停止监控服务</string>
+    <string name="btn_activate_live_wallpaper">去激活系统动态壁纸</string>
+    <string name="btn_manual_light">立即切亮色(测试)</string>
+    <string name="btn_manual_dark">立即切暗色(测试)</string>
+
+    <string name="btn_pick_light">选择日间壁纸</string>
+    <string name="btn_pick_dark">选择夜间壁纸</string>
+    <string name="btn_reset_wallpapers">重置为内置测试壁纸</string>
+
+    <string name="btn_poll_now">主动轮询刷新硬件状态</string>
+    <string name="btn_copy_logs">复制全部日志</string>
+    <string name="btn_export_logs">导出日志文件</string>
+    <string name="btn_clear_logs">清空日志</string>
+</resources>
