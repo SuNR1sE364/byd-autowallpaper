@@ -1,22 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bg_root">#090F1A</color>
-    <color name="bg_card">#121C2D</color>
-    <color name="bg_card_elevated">#17243A</color>
-    <color name="border_card">#223452</color>
-    <color name="bg_console">#060A12</color>
+    <color name="bg_window">#F2F4F8</color>
+    <color name="bg_sidebar">#FFFFFF</color>
+    <color name="bg_card">#FFFFFF</color>
+    <color name="bg_card_subtle">#F7F9FC</color>
+    <color name="bg_console">#F4F6FA</color>
+    <color name="bg_segmented_track">#EAEFF5</color>
 
-    <color name="text_primary">#F1F5F9</color>
-    <color name="text_secondary">#94A3B8</color>
-    <color name="text_muted">#64748B</color>
+    <color name="divider">#E6EBF2</color>
+    <color name="border_card">#E3E8F0</color>
+    <color name="border_subtle">#D8E0EB</color>
 
-    <color name="accent_ocean">#0EA5E9</color>
-    <color name="accent_ocean_pressed">#0284C7</color>
-    <color name="accent_teal">#14B8A6</color>
-    <color name="accent_amber">#F59E0B</color>
-    <color name="accent_danger">#EF4444</color>
-    <color name="accent_success">#22C55E</color>
+    <color name="text_primary">#111827</color>
+    <color name="text_secondary">#5B6577</color>
+    <color name="text_muted">#8A94A6</color>
+    <color name="text_console">#1E293B</color>
 
-    <color name="btn_secondary_bg">#1E293B</color>
-    <color name="btn_secondary_border">#334155</color>
+    <color name="accent_primary">#0078FF</color>
+    <color name="accent_primary_pressed">#0062D1</color>
+    <color name="accent_primary_soft">#E8F3FF</color>
+
+    <color name="status_success">#16A34A</color>
+    <color name="status_success_soft">#E8F8EE</color>
+    <color name="status_warning">#D97706</color>
+    <color name="status_warning_soft">#FEF3C7</color>
+    <color name="status_danger">#DC2626</color>
+    <color name="status_idle">#94A3B8</color>
+
+    <color name="switch_track_off">#CBD5E1</color>
+    <color name="switch_thumb">#FFFFFF</color>
+    <color name="btn_secondary_bg">#EDF1F7</color>
+    <color name="btn_secondary_pressed">#DFE6F0</color>
+    <color name="badge_overlay_bg">#B8111827</color>
 </resources>

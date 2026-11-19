@@ -13,7 +13,7 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
-import android.graphics.Color;
+import android.graphics.Outline;
 import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
@@ -22,14 +22,14 @@ import android.os.Environment;
 import android.provider.Settings;
 import android.text.InputType;
 import android.view.View;
+import android.view.ViewOutlineProvider;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.GridView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.RadioButton;
-import android.widget.RadioGroup;
 import android.widget.ScrollView;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -40,6 +40,7 @@ import com.byd.autodarkwallpaper.service.AutoDarkMonitorService;
 import com.byd.autodarkwallpaper.service.AutoDarkWallpaperService;
 import com.byd.autodarkwallpaper.util.AppLogger;
 import com.byd.autodarkwallpaper.wallpaper.WallpaperController;
+import com.byd.autodarkwallpaper.wallpaper.WallpaperRepository;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -48,81 +49,100 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * BYD / DiLink 150 双模式自动亮/暗壁纸主界面。
+ * 车机原生风格主界面：左侧导航栏（主页 / 壁纸 / 关于）+ 右侧内容区。
  */
 public class MainActivity extends Activity {
 
     private static final String TAG = "MainUI";
-    private static final int REQ_PICK_LIGHT = 1001;
-    private static final int REQ_PICK_DARK = 1002;
+    private static final String STATE_TAB = "state_selected_tab";
+    private static final String STATE_EDITING_NIGHT = "state_editing_night";
+
+    private static final int TAB_HOME = 0;
+    private static final int TAB_WALLPAPER = 1;
+    private static final int TAB_ABOUT = 2;
+
+    private static final int PENDING_NONE = 0;
+    private static final int PENDING_ENABLE_STATIC = 1;
+    private static final int PENDING_SWITCH_TO_STATIC = 2;
+
+    private static final int REQ_PICK_WALLPAPERS = 1001;
     private static final int REQ_PICK_LOG_TREE = 1003;
     private static final int REQ_CREATE_LOG_FILE = 1004;
-    private static final int REQ_RUNTIME_PERMISSIONS = 2001;
+    private static final int REQ_READ_STORAGE_FOR_BACKUP = 2001;
+    private static final int REQ_POST_NOTIFICATIONS = 2002;
 
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
     private AppPrefs prefs;
+    private WallpaperGridAdapter gridAdapter;
+
+    private int currentTab = TAB_HOME;
+    private boolean editingNight = false;
     private boolean suppressControlEvents = false;
+    private int pendingActionAfterPermission = PENDING_NONE;
+    private boolean logListenerRegistered = false;
+    private String lastApplyStatusText = "尚未切换壁纸";
 
-    // 顶部与状态
-    private TextView tvHeaderVersion;
-    private TextView tvServiceStatus;
-    private TextView tvEvaluatedMode;
-    private TextView tvLiveWallpaperStatus;
-    private TextView tvLastApplyResult;
-    private Button btnToggleService;
+    // 左边栏控件
+    private View navHome;
+    private View navWallpaper;
+    private View navAbout;
+    private ImageView ivNavHome;
+    private ImageView ivNavWallpaper;
+    private ImageView ivNavAbout;
+    private TextView tvNavHome;
+    private TextView tvNavWallpaper;
+    private TextView tvNavAbout;
+    private View viewSidebarStatusDot;
+    private TextView tvSidebarStatus;
+
+    // 页面容器
+    private View pageHome;
+    private View pageWallpaper;
+    private View pageAbout;
+
+    // 主页控件
+    private ImageView ivSystemModeIcon;
+    private TextView tvSystemModePill;
+    private TextView tvMasterStatusDesc;
+    private TextView tvMasterSubHint;
+    private Switch switchMasterEnable;
+    private View cardModeStatic;
+    private View cardModeLive;
+    private ImageView ivModeStaticIcon;
+    private ImageView ivModeLiveIcon;
+    private ImageView ivModeStaticCheck;
+    private ImageView ivModeLiveCheck;
+    private View layoutLiveWallpaperAction;
+    private TextView tvLiveWallpaperState;
     private Button btnActivateLiveWallpaper;
-    private Button btnManualLight;
-    private Button btnManualDark;
+    private View cardHomeDayPreview;
+    private View cardHomeNightPreview;
+    private ImageView ivHomeDayPreview;
+    private ImageView ivHomeNightPreview;
+    private TextView tvHomeDayEmptyHint;
+    private TextView tvHomeNightEmptyHint;
+    private TextView tvHomeDayPolicy;
+    private TextView tvHomeNightPolicy;
+    private TextView tvHomeDayName;
+    private TextView tvHomeNightName;
 
-    // 壁纸预览与选择
-    private ImageView ivPreviewLight;
-    private TextView tvLightMeta;
-    private ImageView ivPreviewDark;
-    private TextView tvDarkMeta;
-    private Button btnPickLight;
-    private Button btnPickDark;
-    private Button btnResetWallpapers;
+    // 壁纸页控件
+    private TextView tabWallpaperDay;
+    private TextView tabWallpaperNight;
+    private Button btnAddWallpaper;
+    private TextView tvWallpaperStrategyDesc;
+    private TextView tabStrategyFixed;
+    private TextView tabStrategyRandom;
+    private GridView gridWallpapers;
+    private View layoutWallpaperEmpty;
+    private TextView tvWallpaperEmptyTitle;
+    private Button btnEmptyAddWallpaper;
 
-    // 实现模式
-    private RadioGroup rgWallpaperMode;
-    private RadioButton rbModeDual;
-    private RadioButton rbModeLive;
-    private RadioButton rbModeStatic;
-    private CheckBox cbStaticSyncLockScreen;
-
-    // 触发源与阈值
-    private RadioGroup rgTriggerSource;
-    private RadioButton rbTriggerSystem;
-    private RadioButton rbTriggerLight;
-    private RadioButton rbTriggerSensor;
-    private RadioButton rbTriggerAnyDark;
-    private CheckBox cbLightSide;
-    private CheckBox cbLightLowBeam;
-    private CheckBox cbLightHighBeam;
-    private RadioGroup rgSensorThreshold;
-    private RadioButton rbLevel1;
-    private RadioButton rbLevel2;
-    private RadioButton rbLevel3;
-    private RadioButton rbLevel4;
-    private RadioButton rbLevel5;
-    private RadioGroup rgSensorDirection;
-    private RadioButton rbSensorLte;
-    private RadioButton rbSensorGte;
-    private RadioGroup rgDebounce;
-    private RadioButton rbDebounce0;
-    private RadioButton rbDebounce1500;
-    private RadioButton rbDebounce3000;
-    private RadioButton rbDebounce5000;
-    private CheckBox cbBootAutoStart;
-
-    // 遥测与日志
-    private Button btnCheckPermissions;
-    private Button btnPollNow;
-    private TextView tvTelemetrySystem;
-    private TextView tvTelemetryLight;
-    private TextView tvTelemetrySensor;
-    private TextView tvTelemetryBodywork;
-    private TextView tvTelemetryDecision;
+    // 关于页控件
+    private TextView tvAboutVersion;
+    private TextView tvAboutDeviceInfo;
+    private Switch switchDebugMode;
+    private View cardDebugConsole;
     private TextView tvLogFilePath;
     private Button btnSetLogPath;
     private Button btnCopyLogs;
@@ -142,15 +162,15 @@ public class MainActivity extends Activity {
     };
 
     private final AutoDarkMonitorService.MonitorObserver monitorObserver =
-            (running, snapshot, evaluation) -> renderTelemetry(running, snapshot, evaluation);
+            (running, snapshot, evaluation) -> renderHomeStatus();
 
     private final WallpaperController.ApplyStatusListener applyStatusListener =
             (statusText, isError) -> {
-                if (tvLastApplyResult != null) {
-                    tvLastApplyResult.setText("最近应用状态：" + statusText);
-                    tvLastApplyResult.setTextColor(Color.parseColor(isError ? "#F87171" : "#34D399"));
+                lastApplyStatusText = statusText;
+                renderHomeStatus();
+                if (currentTab == TAB_WALLPAPER) {
+                    refreshWallpaperPage();
                 }
-                refreshLiveWallpaperStatusText();
             };
 
     @Override
@@ -160,188 +180,143 @@ public class MainActivity extends Activity {
         setContentView(R.layout.activity_main);
         prefs = new AppPrefs(this);
 
-        bindViews();
-        populateHeaderVersion();
-        syncControlsFromPrefs();
-        setupControlListeners();
-        refreshWallpaperPreviewsAsync();
-        refreshLiveWallpaperStatusText();
-        refreshLogLocationText();
+        if (savedInstanceState != null) {
+            currentTab = savedInstanceState.getInt(STATE_TAB, TAB_HOME);
+            editingNight = savedInstanceState.getBoolean(STATE_EDITING_NIGHT, false);
+        }
 
-        requestAppPermissionsIfNeeded();
+        bindViews();
+        setupListeners();
+        populateAboutInfo();
+
+        selectTab(currentTab);
+        renderHomeStatus();
+        refreshHomeWallpaperOverviewAsync();
+        refreshWallpaperPage();
+        syncDebugConsoleState();
 
         if (prefs.isEnabled() && !AutoDarkMonitorService.isRunning()) {
-            AppLogger.i(TAG, "首次进入主界面，自动拉起 AutoDarkMonitorService");
+            AppLogger.i(TAG, "检测到开关为开启状态，自动拉起 AutoDarkMonitorService");
             AutoDarkMonitorService.startMonitor(this);
         }
     }
 
     @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putInt(STATE_TAB, currentTab);
+        outState.putBoolean(STATE_EDITING_NIGHT, editingNight);
+    }
+
+    @Override
     protected void onStart() {
         super.onStart();
-        AppLogger.addListener(logListener);
         AutoDarkMonitorService.addObserver(monitorObserver);
         WallpaperController.addApplyStatusListener(applyStatusListener);
-        refreshLiveWallpaperStatusText();
-        refreshLogLocationText();
+        syncDebugConsoleState();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        renderHomeStatus();
+        refreshHomeWallpaperOverviewAsync();
+        if (currentTab == TAB_WALLPAPER) {
+            refreshWallpaperPage();
+        }
+        handlePendingActionAfterPermission();
     }
 
     @Override
     protected void onStop() {
         WallpaperController.removeApplyStatusListener(applyStatusListener);
         AutoDarkMonitorService.removeObserver(monitorObserver);
-        AppLogger.removeListener(logListener);
+        unregisterLogListenerIfNeeded();
         super.onStop();
     }
 
     @Override
     protected void onDestroy() {
+        if (gridAdapter != null) {
+            gridAdapter.release();
+        }
         ioExecutor.shutdownNow();
         super.onDestroy();
     }
 
-    @Override
-    public void onConfigurationChanged(Configuration newConfig) {
-        super.onConfigurationChanged(newConfig);
-        int nightMask = newConfig.uiMode & Configuration.UI_MODE_NIGHT_MASK;
-        AppLogger.i(TAG, "MainActivity.onConfigurationChanged | uiMode="
-                + VehicleStateMonitor.formatSystemNightMask(nightMask));
-        if (AutoDarkMonitorService.isRunning()) {
-            AutoDarkMonitorService.requestPollNow(this);
-        }
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (resultCode != RESULT_OK || data == null || data.getData() == null) {
-            return;
-        }
-        final Uri uri = data.getData();
-
-        if (requestCode == REQ_PICK_LIGHT || requestCode == REQ_PICK_DARK) {
-            final boolean isDark = (requestCode == REQ_PICK_DARK);
-            AppLogger.i(TAG, "用户选择了" + (isDark ? "夜间" : "日间") + "壁纸 URI=" + uri);
-
-            ioExecutor.execute(() -> {
-                try {
-                    WallpaperController.importWallpaperFromUri(MainActivity.this, uri, isDark);
-                    runOnUiThread(() -> {
-                        refreshWallpaperPreviewsAsync();
-                        Toast.makeText(MainActivity.this,
-                                (isDark ? "夜间" : "日间") + "壁纸导入成功", Toast.LENGTH_SHORT).show();
-                        if (AutoDarkMonitorService.isRunning()) {
-                            AutoDarkMonitorService.notifyConfigUpdated(MainActivity.this);
-                        }
-                    });
-                } catch (Throwable t) {
-                    AppLogger.e(TAG, "导入壁纸失败: uri=" + uri, t);
-                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
-                            "导入失败: " + t.getMessage(), Toast.LENGTH_LONG).show());
-                }
-            });
-            return;
-        }
-
-        if (requestCode == REQ_PICK_LOG_TREE) {
-            try {
-                final int takeFlags = data.getFlags()
-                        & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-                getContentResolver().takePersistableUriPermission(uri, takeFlags);
-            } catch (Throwable t) {
-                AppLogger.w(TAG, "持久化 SAF 目录权限失败（尝试直接导出）: " + t.getMessage());
-            }
-            prefs.setLogSafTreeUri(uri.toString());
-            AppLogger.i(TAG, "已绑定 SAF 日志导出目录 URI=" + uri);
-            refreshLogLocationText();
-
-            ioExecutor.execute(() -> {
-                try {
-                    Uri exported = AppLogger.exportLogsToSafTree(MainActivity.this, uri);
-                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
-                            "SAF 目录绑定成功，已导出验证文件: " + exported, Toast.LENGTH_LONG).show());
-                } catch (Throwable t) {
-                    AppLogger.e(TAG, "导出日志到 SAF 目录失败: uri=" + uri, t);
-                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
-                            "SAF 目录导出失败: " + t.getMessage(), Toast.LENGTH_LONG).show());
-                }
-            });
-            return;
-        }
-
-        if (requestCode == REQ_CREATE_LOG_FILE) {
-            ioExecutor.execute(() -> {
-                try {
-                    AppLogger.writeLogsToUri(MainActivity.this, uri);
-                    AppLogger.i(TAG, "日志已另存为文件 URI=" + uri);
-                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
-                            "日志另存成功: " + uri, Toast.LENGTH_LONG).show());
-                } catch (Throwable t) {
-                    AppLogger.e(TAG, "另存日志文件失败: uri=" + uri, t);
-                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
-                            "另存失败: " + t.getMessage(), Toast.LENGTH_LONG).show());
-                }
-            });
-        }
-    }
-
     private void bindViews() {
-        tvHeaderVersion = findViewById(R.id.tvHeaderVersion);
-        tvServiceStatus = findViewById(R.id.tvServiceStatus);
-        tvEvaluatedMode = findViewById(R.id.tvEvaluatedMode);
-        tvLiveWallpaperStatus = findViewById(R.id.tvLiveWallpaperStatus);
-        tvLastApplyResult = findViewById(R.id.tvLastApplyResult);
-        btnToggleService = findViewById(R.id.btnToggleService);
+        navHome = findViewById(R.id.navHome);
+        navWallpaper = findViewById(R.id.navWallpaper);
+        navAbout = findViewById(R.id.navAbout);
+        ivNavHome = findViewById(R.id.ivNavHome);
+        ivNavWallpaper = findViewById(R.id.ivNavWallpaper);
+        ivNavAbout = findViewById(R.id.ivNavAbout);
+        tvNavHome = findViewById(R.id.tvNavHome);
+        tvNavWallpaper = findViewById(R.id.tvNavWallpaper);
+        tvNavAbout = findViewById(R.id.tvNavAbout);
+        viewSidebarStatusDot = findViewById(R.id.viewSidebarStatusDot);
+        tvSidebarStatus = findViewById(R.id.tvSidebarStatus);
+
+        pageHome = findViewById(R.id.pageHome);
+        pageWallpaper = findViewById(R.id.pageWallpaper);
+        pageAbout = findViewById(R.id.pageAbout);
+
+        ivSystemModeIcon = findViewById(R.id.ivSystemModeIcon);
+        tvSystemModePill = findViewById(R.id.tvSystemModePill);
+        tvMasterStatusDesc = findViewById(R.id.tvMasterStatusDesc);
+        tvMasterSubHint = findViewById(R.id.tvMasterSubHint);
+        switchMasterEnable = findViewById(R.id.switchMasterEnable);
+        cardModeStatic = findViewById(R.id.cardModeStatic);
+        cardModeLive = findViewById(R.id.cardModeLive);
+        ivModeStaticIcon = findViewById(R.id.ivModeStaticIcon);
+        ivModeLiveIcon = findViewById(R.id.ivModeLiveIcon);
+        ivModeStaticCheck = findViewById(R.id.ivModeStaticCheck);
+        ivModeLiveCheck = findViewById(R.id.ivModeLiveCheck);
+        layoutLiveWallpaperAction = findViewById(R.id.layoutLiveWallpaperAction);
+        tvLiveWallpaperState = findViewById(R.id.tvLiveWallpaperState);
         btnActivateLiveWallpaper = findViewById(R.id.btnActivateLiveWallpaper);
-        btnManualLight = findViewById(R.id.btnManualLight);
-        btnManualDark = findViewById(R.id.btnManualDark);
+        cardHomeDayPreview = findViewById(R.id.cardHomeDayPreview);
+        cardHomeNightPreview = findViewById(R.id.cardHomeNightPreview);
+        ivHomeDayPreview = findViewById(R.id.ivHomeDayPreview);
+        ivHomeNightPreview = findViewById(R.id.ivHomeNightPreview);
+        tvHomeDayEmptyHint = findViewById(R.id.tvHomeDayEmptyHint);
+        tvHomeNightEmptyHint = findViewById(R.id.tvHomeNightEmptyHint);
+        tvHomeDayPolicy = findViewById(R.id.tvHomeDayPolicy);
+        tvHomeNightPolicy = findViewById(R.id.tvHomeNightPolicy);
+        tvHomeDayName = findViewById(R.id.tvHomeDayName);
+        tvHomeNightName = findViewById(R.id.tvHomeNightName);
 
-        ivPreviewLight = findViewById(R.id.ivPreviewLight);
-        tvLightMeta = findViewById(R.id.tvLightMeta);
-        ivPreviewDark = findViewById(R.id.ivPreviewDark);
-        tvDarkMeta = findViewById(R.id.tvDarkMeta);
-        btnPickLight = findViewById(R.id.btnPickLight);
-        btnPickDark = findViewById(R.id.btnPickDark);
-        btnResetWallpapers = findViewById(R.id.btnResetWallpapers);
+        applyRoundClip(ivHomeDayPreview, 12f);
+        applyRoundClip(ivHomeNightPreview, 12f);
 
-        rgWallpaperMode = findViewById(R.id.rgWallpaperMode);
-        rbModeDual = findViewById(R.id.rbModeDual);
-        rbModeLive = findViewById(R.id.rbModeLive);
-        rbModeStatic = findViewById(R.id.rbModeStatic);
-        cbStaticSyncLockScreen = findViewById(R.id.cbStaticSyncLockScreen);
+        tabWallpaperDay = findViewById(R.id.tabWallpaperDay);
+        tabWallpaperNight = findViewById(R.id.tabWallpaperNight);
+        btnAddWallpaper = findViewById(R.id.btnAddWallpaper);
+        tvWallpaperStrategyDesc = findViewById(R.id.tvWallpaperStrategyDesc);
+        tabStrategyFixed = findViewById(R.id.tabStrategyFixed);
+        tabStrategyRandom = findViewById(R.id.tabStrategyRandom);
+        gridWallpapers = findViewById(R.id.gridWallpapers);
+        layoutWallpaperEmpty = findViewById(R.id.layoutWallpaperEmpty);
+        tvWallpaperEmptyTitle = findViewById(R.id.tvWallpaperEmptyTitle);
+        btnEmptyAddWallpaper = findViewById(R.id.btnEmptyAddWallpaper);
 
-        rgTriggerSource = findViewById(R.id.rgTriggerSource);
-        rbTriggerSystem = findViewById(R.id.rbTriggerSystem);
-        rbTriggerLight = findViewById(R.id.rbTriggerLight);
-        rbTriggerSensor = findViewById(R.id.rbTriggerSensor);
-        rbTriggerAnyDark = findViewById(R.id.rbTriggerAnyDark);
-        cbLightSide = findViewById(R.id.cbLightSide);
-        cbLightLowBeam = findViewById(R.id.cbLightLowBeam);
-        cbLightHighBeam = findViewById(R.id.cbLightHighBeam);
-        rgSensorThreshold = findViewById(R.id.rgSensorThreshold);
-        rbLevel1 = findViewById(R.id.rbLevel1);
-        rbLevel2 = findViewById(R.id.rbLevel2);
-        rbLevel3 = findViewById(R.id.rbLevel3);
-        rbLevel4 = findViewById(R.id.rbLevel4);
-        rbLevel5 = findViewById(R.id.rbLevel5);
-        rgSensorDirection = findViewById(R.id.rgSensorDirection);
-        rbSensorLte = findViewById(R.id.rbSensorLte);
-        rbSensorGte = findViewById(R.id.rbSensorGte);
-        rgDebounce = findViewById(R.id.rgDebounce);
-        rbDebounce0 = findViewById(R.id.rbDebounce0);
-        rbDebounce1500 = findViewById(R.id.rbDebounce1500);
-        rbDebounce3000 = findViewById(R.id.rbDebounce3000);
-        rbDebounce5000 = findViewById(R.id.rbDebounce5000);
-        cbBootAutoStart = findViewById(R.id.cbBootAutoStart);
+        gridAdapter = new WallpaperGridAdapter(this, new WallpaperGridAdapter.ItemActionListener() {
+            @Override
+            public void onItemClicked(WallpaperRepository.WallpaperItem item) {
+                handleWallpaperItemClicked(item);
+            }
 
-        btnCheckPermissions = findViewById(R.id.btnCheckPermissions);
-        btnPollNow = findViewById(R.id.btnPollNow);
-        tvTelemetrySystem = findViewById(R.id.tvTelemetrySystem);
-        tvTelemetryLight = findViewById(R.id.tvTelemetryLight);
-        tvTelemetrySensor = findViewById(R.id.tvTelemetrySensor);
-        tvTelemetryBodywork = findViewById(R.id.tvTelemetryBodywork);
-        tvTelemetryDecision = findViewById(R.id.tvTelemetryDecision);
+            @Override
+            public void onDeleteClicked(WallpaperRepository.WallpaperItem item) {
+                confirmDeleteWallpaper(item);
+            }
+        });
+        gridWallpapers.setAdapter(gridAdapter);
 
+        tvAboutVersion = findViewById(R.id.tvAboutVersion);
+        tvAboutDeviceInfo = findViewById(R.id.tvAboutDeviceInfo);
+        switchDebugMode = findViewById(R.id.switchDebugMode);
+        cardDebugConsole = findViewById(R.id.cardDebugConsole);
         tvLogFilePath = findViewById(R.id.tvLogFilePath);
         btnSetLogPath = findViewById(R.id.btnSetLogPath);
         btnCopyLogs = findViewById(R.id.btnCopyLogs);
@@ -351,252 +326,73 @@ public class MainActivity extends Activity {
         tvLogConsole = findViewById(R.id.tvLogConsole);
     }
 
-    private void populateHeaderVersion() {
-        String versionName = "unknown";
-        try {
-            PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
-            versionName = pi.versionName;
-        } catch (Throwable t) {
-            AppLogger.e(TAG, "获取应用版本信息失败", t);
-        }
-        tvHeaderVersion.setText("v" + versionName + " · Android " + Build.VERSION.RELEASE
-                + " (SDK " + Build.VERSION.SDK_INT + ")");
+    private void applyRoundClip(ImageView imageView, float radiusDp) {
+        final float radiusPx = radiusDp * getResources().getDisplayMetrics().density;
+        imageView.setClipToOutline(true);
+        imageView.setOutlineProvider(new ViewOutlineProvider() {
+            @Override
+            public void getOutline(View v, Outline outline) {
+                outline.setRoundRect(0, 0, v.getWidth(), v.getHeight(), radiusPx);
+            }
+        });
     }
 
-    private void syncControlsFromPrefs() {
-        suppressControlEvents = true;
-        try {
-            int mode = prefs.getWallpaperMode();
-            if (mode == AppPrefs.MODE_STATIC_MANAGER) {
-                rbModeStatic.setChecked(true);
-            } else if (mode == AppPrefs.MODE_LIVE_SERVICE) {
-                rbModeLive.setChecked(true);
-            } else {
-                rbModeDual.setChecked(true);
+    private void setupListeners() {
+        navHome.setOnClickListener(v -> selectTab(TAB_HOME));
+        navWallpaper.setOnClickListener(v -> selectTab(TAB_WALLPAPER));
+        navAbout.setOnClickListener(v -> selectTab(TAB_ABOUT));
+
+        switchMasterEnable.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (suppressControlEvents) {
+                return;
             }
-            cbStaticSyncLockScreen.setChecked(prefs.isStaticSyncLockScreen());
-
-            int trigger = prefs.getActiveTriggerSource();
-            if (trigger == AppPrefs.TRIGGER_BYD_LIGHT) {
-                rbTriggerLight.setChecked(true);
-            } else if (trigger == AppPrefs.TRIGGER_BYD_SENSOR) {
-                rbTriggerSensor.setChecked(true);
-            } else if (trigger == AppPrefs.TRIGGER_ANY_DARK) {
-                rbTriggerAnyDark.setChecked(true);
+            if (isChecked) {
+                handleMasterEnableRequested();
             } else {
-                rbTriggerSystem.setChecked(true);
-            }
-
-            cbLightSide.setChecked(prefs.isLightUseSide());
-            cbLightLowBeam.setChecked(prefs.isLightUseLowBeam());
-            cbLightHighBeam.setChecked(prefs.isLightUseHighBeam());
-
-            int threshold = prefs.getSensorThresholdLevel();
-            if (threshold == 1) {
-                rbLevel1.setChecked(true);
-            } else if (threshold == 3) {
-                rbLevel3.setChecked(true);
-            } else if (threshold == 4) {
-                rbLevel4.setChecked(true);
-            } else if (threshold == 5) {
-                rbLevel5.setChecked(true);
-            } else {
-                rbLevel2.setChecked(true);
-            }
-
-            if (prefs.isSensorDarkWhenLte()) {
-                rbSensorLte.setChecked(true);
-            } else {
-                rbSensorGte.setChecked(true);
-            }
-
-            long debounce = prefs.getDebounceMs();
-            if (debounce == 0L) {
-                rbDebounce0.setChecked(true);
-            } else if (debounce == 3000L) {
-                rbDebounce3000.setChecked(true);
-            } else if (debounce == 5000L) {
-                rbDebounce5000.setChecked(true);
-            } else {
-                rbDebounce1500.setChecked(true);
-            }
-
-            cbBootAutoStart.setChecked(prefs.isBootAutoStart());
-        } finally {
-            suppressControlEvents = false;
-        }
-    }
-
-    private void setupControlListeners() {
-        btnToggleService.setOnClickListener(v -> {
-            if (AutoDarkMonitorService.isRunning()) {
-                prefs.setEnabled(false);
-                AutoDarkMonitorService.stopMonitor(this);
-                AppLogger.i(TAG, "用户手动停止监控服务");
-            } else {
-                prefs.setEnabled(true);
-                AutoDarkMonitorService.startMonitor(this);
-                AppLogger.i(TAG, "用户手动启动监控服务");
+                handleMasterDisableRequested();
             }
         });
 
+        cardModeStatic.setOnClickListener(v -> handleModeSwitchRequested(AppPrefs.MODE_STATIC_MANAGER));
+        cardModeLive.setOnClickListener(v -> handleModeSwitchRequested(AppPrefs.MODE_LIVE_SERVICE));
         btnActivateLiveWallpaper.setOnClickListener(v -> openLiveWallpaperChooser());
 
-        btnManualLight.setOnClickListener(v -> {
-            AppLogger.i(TAG, "点击【立即切亮色(测试)】");
-            AutoDarkMonitorService.requestManualApply(this, false);
+        cardHomeDayPreview.setOnClickListener(v -> {
+            editingNight = false;
+            selectTab(TAB_WALLPAPER);
+        });
+        cardHomeNightPreview.setOnClickListener(v -> {
+            editingNight = true;
+            selectTab(TAB_WALLPAPER);
         });
 
-        btnManualDark.setOnClickListener(v -> {
-            AppLogger.i(TAG, "点击【立即切暗色(测试)】");
-            AutoDarkMonitorService.requestManualApply(this, true);
-        });
-
-        btnPickLight.setOnClickListener(v -> launchImagePicker(REQ_PICK_LIGHT));
-        btnPickDark.setOnClickListener(v -> launchImagePicker(REQ_PICK_DARK));
-        btnResetWallpapers.setOnClickListener(v -> ioExecutor.execute(() -> {
-            try {
-                WallpaperController.resetToDefaultWallpapers(MainActivity.this);
-                runOnUiThread(() -> {
-                    refreshWallpaperPreviewsAsync();
-                    Toast.makeText(MainActivity.this, "已恢复内置测试壁纸", Toast.LENGTH_SHORT).show();
-                    if (AutoDarkMonitorService.isRunning()) {
-                        AutoDarkMonitorService.notifyConfigUpdated(MainActivity.this);
-                    }
-                });
-            } catch (Throwable t) {
-                AppLogger.e(TAG, "重置内置测试壁纸失败", t);
-                runOnUiThread(() -> Toast.makeText(MainActivity.this,
-                        "重置失败: " + t.getMessage(), Toast.LENGTH_LONG).show());
+        tabWallpaperDay.setOnClickListener(v -> {
+            if (editingNight) {
+                editingNight = false;
+                refreshWallpaperPage();
             }
-        }));
+        });
+        tabWallpaperNight.setOnClickListener(v -> {
+            if (!editingNight) {
+                editingNight = true;
+                refreshWallpaperPage();
+            }
+        });
 
-        rgWallpaperMode.setOnCheckedChangeListener((group, checkedId) -> {
+        View.OnClickListener addListener = v -> launchWallpaperPicker();
+        btnAddWallpaper.setOnClickListener(addListener);
+        btnEmptyAddWallpaper.setOnClickListener(addListener);
+
+        tabStrategyFixed.setOnClickListener(v -> updateSelectionMode(AppPrefs.SELECT_FIXED));
+        tabStrategyRandom.setOnClickListener(v -> updateSelectionMode(AppPrefs.SELECT_RANDOM));
+
+        switchDebugMode.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if (suppressControlEvents) {
                 return;
             }
-            int mode = AppPrefs.MODE_DUAL;
-            if (checkedId == R.id.rbModeLive) {
-                mode = AppPrefs.MODE_LIVE_SERVICE;
-            } else if (checkedId == R.id.rbModeStatic) {
-                mode = AppPrefs.MODE_STATIC_MANAGER;
-            }
-            prefs.setWallpaperMode(mode);
-            AppLogger.i(TAG, "切换壁纸实现模式 -> " + AppPrefs.formatWallpaperMode(mode));
-            AutoDarkMonitorService.notifyConfigUpdated(this);
-        });
-
-        cbStaticSyncLockScreen.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            if (suppressControlEvents) {
-                return;
-            }
-            prefs.setStaticSyncLockScreen(isChecked);
-            AppLogger.i(TAG, "静态模式同步锁屏壁纸 -> " + isChecked);
-            AutoDarkMonitorService.notifyConfigUpdated(this);
-        });
-
-        rgTriggerSource.setOnCheckedChangeListener((group, checkedId) -> {
-            if (suppressControlEvents) {
-                return;
-            }
-            int source = AppPrefs.TRIGGER_SYSTEM_UIMODE;
-            if (checkedId == R.id.rbTriggerLight) {
-                source = AppPrefs.TRIGGER_BYD_LIGHT;
-            } else if (checkedId == R.id.rbTriggerSensor) {
-                source = AppPrefs.TRIGGER_BYD_SENSOR;
-            } else if (checkedId == R.id.rbTriggerAnyDark) {
-                source = AppPrefs.TRIGGER_ANY_DARK;
-            }
-            prefs.setActiveTriggerSource(source);
-            AppLogger.i(TAG, "切换主触发源 -> " + AppPrefs.formatTriggerSource(source));
-            AutoDarkMonitorService.notifyConfigUpdated(this);
-        });
-
-        cbLightSide.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            if (suppressControlEvents) {
-                return;
-            }
-            prefs.setLightUseSide(isChecked);
-            AppLogger.i(TAG, "车灯触发项[示宽灯/小灯] -> " + isChecked);
-            AutoDarkMonitorService.notifyConfigUpdated(this);
-        });
-
-        cbLightLowBeam.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            if (suppressControlEvents) {
-                return;
-            }
-            prefs.setLightUseLowBeam(isChecked);
-            AppLogger.i(TAG, "车灯触发项[近光灯] -> " + isChecked);
-            AutoDarkMonitorService.notifyConfigUpdated(this);
-        });
-
-        cbLightHighBeam.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            if (suppressControlEvents) {
-                return;
-            }
-            prefs.setLightUseHighBeam(isChecked);
-            AppLogger.i(TAG, "车灯触发项[远光灯] -> " + isChecked);
-            AutoDarkMonitorService.notifyConfigUpdated(this);
-        });
-
-        rgSensorThreshold.setOnCheckedChangeListener((group, checkedId) -> {
-            if (suppressControlEvents) {
-                return;
-            }
-            int level = 2;
-            if (checkedId == R.id.rbLevel1) {
-                level = 1;
-            } else if (checkedId == R.id.rbLevel3) {
-                level = 3;
-            } else if (checkedId == R.id.rbLevel4) {
-                level = 4;
-            } else if (checkedId == R.id.rbLevel5) {
-                level = 5;
-            }
-            prefs.setSensorThresholdLevel(level);
-            AppLogger.i(TAG, "光感阈值档位 -> L" + level);
-            AutoDarkMonitorService.notifyConfigUpdated(this);
-        });
-
-        rgSensorDirection.setOnCheckedChangeListener((group, checkedId) -> {
-            if (suppressControlEvents) {
-                return;
-            }
-            boolean lte = (checkedId == R.id.rbSensorLte);
-            prefs.setSensorDarkWhenLte(lte);
-            AppLogger.i(TAG, "光感夜间方向 -> " + (lte ? "<= 阈值视为夜间" : ">= 阈值视为夜间"));
-            AutoDarkMonitorService.notifyConfigUpdated(this);
-        });
-
-        rgDebounce.setOnCheckedChangeListener((group, checkedId) -> {
-            if (suppressControlEvents) {
-                return;
-            }
-            long ms = 1500L;
-            if (checkedId == R.id.rbDebounce0) {
-                ms = 0L;
-            } else if (checkedId == R.id.rbDebounce3000) {
-                ms = 3000L;
-            } else if (checkedId == R.id.rbDebounce5000) {
-                ms = 5000L;
-            }
-            prefs.setDebounceMs(ms);
-            AppLogger.i(TAG, "防抖延迟 -> " + ms + "ms");
-        });
-
-        cbBootAutoStart.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            if (suppressControlEvents) {
-                return;
-            }
-            prefs.setBootAutoStart(isChecked);
-            AppLogger.i(TAG, "开机自启开关 -> " + isChecked);
-        });
-
-        btnCheckPermissions.setOnClickListener(v -> showPermissionDiagnosticsDialog());
-
-        btnPollNow.setOnClickListener(v -> {
-            AppLogger.i(TAG, "用户点击【主动轮询刷新硬件状态】");
-            AutoDarkMonitorService.requestPollNow(this);
+            prefs.setDebugModeEnabled(isChecked);
+            AppLogger.i(TAG, "调试模式 -> " + (isChecked ? "已开启" : "已关闭"));
+            syncDebugConsoleState();
         });
 
         btnSetLogPath.setOnClickListener(v -> showLogPathConfigDialog());
@@ -631,53 +427,656 @@ public class MainActivity extends Activity {
         btnClearLogs.setOnClickListener(v -> AppLogger.clear());
     }
 
-    private void refreshLogLocationText() {
-        if (tvLogFilePath != null) {
-            tvLogFilePath.setText(AppLogger.getLogLocationSummary(this) + "（点击可修改）");
+    private void selectTab(int tab) {
+        currentTab = tab;
+        pageHome.setVisibility(tab == TAB_HOME ? View.VISIBLE : View.GONE);
+        pageWallpaper.setVisibility(tab == TAB_WALLPAPER ? View.VISIBLE : View.GONE);
+        pageAbout.setVisibility(tab == TAB_ABOUT ? View.VISIBLE : View.GONE);
+
+        updateSidebarItemStyle(navHome, ivNavHome, tvNavHome, tab == TAB_HOME);
+        updateSidebarItemStyle(navWallpaper, ivNavWallpaper, tvNavWallpaper, tab == TAB_WALLPAPER);
+        updateSidebarItemStyle(navAbout, ivNavAbout, tvNavAbout, tab == TAB_ABOUT);
+
+        if (tab == TAB_HOME) {
+            renderHomeStatus();
+            refreshHomeWallpaperOverviewAsync();
+        } else if (tab == TAB_WALLPAPER) {
+            refreshWallpaperPage();
+        } else if (tab == TAB_ABOUT) {
+            syncDebugConsoleState();
         }
     }
 
-    private void showPermissionDiagnosticsDialog() {
-        List<String> denied = new ArrayList<>();
-        String bydReport = VehicleStateMonitor.buildBydPermissionReport(this, denied);
-        String storageState;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            storageState = "所有文件访问权限 (MANAGE_EXTERNAL_STORAGE): "
-                    + (Environment.isExternalStorageManager() ? "已授予" : "未授予");
-        } else {
-            storageState = "WRITE_EXTERNAL_STORAGE: "
-                    + (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
-                    ? "已授予" : "未授予");
+    private void updateSidebarItemStyle(View container, ImageView icon, TextView label, boolean selected) {
+        container.setSelected(selected);
+        int accentColor = getColor(R.color.accent_primary);
+        int primaryColor = getColor(R.color.text_primary);
+        int secondaryColor = getColor(R.color.text_secondary);
+
+        icon.setColorFilter(selected ? accentColor : secondaryColor);
+        label.setTextColor(selected ? accentColor : primaryColor);
+        label.setTypeface(null, selected ? Typeface.BOLD : Typeface.NORMAL);
+    }
+
+    private boolean isSystemNightNow() {
+        int mask = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+        return mask == Configuration.UI_MODE_NIGHT_YES;
+    }
+
+    private void renderHomeStatus() {
+        boolean systemDark = isSystemNightNow();
+        ivSystemModeIcon.setImageResource(systemDark ? R.drawable.ic_moon : R.drawable.ic_sun);
+        tvSystemModePill.setText(systemDark ? "当前：夜间模式" : "当前：日间模式");
+
+        boolean enabled = prefs.isEnabled();
+        boolean running = AutoDarkMonitorService.isRunning();
+        int mode = prefs.getWallpaperMode();
+
+        suppressControlEvents = true;
+        try {
+            switchMasterEnable.setChecked(enabled);
+        } finally {
+            suppressControlEvents = false;
         }
 
-        String fullReport = storageState + "\n\n比亚迪硬件权限状态:\n" + bydReport;
-        AppLogger.i(TAG, "用户触发权限自检:\n" + fullReport);
+        if (enabled && running) {
+            tvMasterStatusDesc.setText("已开启 · 正在跟随车机系统" + (systemDark ? "夜间" : "日间") + "模式运行");
+            if (mode == AppPrefs.MODE_STATIC_MANAGER) {
+                if (prefs.hasOriginalBackup()) {
+                    String meta = prefs.getOriginalBackupMeta();
+                    tvMasterSubHint.setText("已备份原壁纸" + (meta != null ? " (" + meta + ")" : "")
+                            + "，关闭开关后将自动复原 · " + lastApplyStatusText);
+                } else {
+                    tvMasterSubHint.setText("未备份原壁纸 · " + lastApplyStatusText);
+                }
+            } else {
+                tvMasterSubHint.setText("动态壁纸模式 · " + lastApplyStatusText);
+            }
+            viewSidebarStatusDot.getBackground().setTint(getColor(R.color.status_success));
+            tvSidebarStatus.setText("运行中 · " + (systemDark ? "夜间" : "日间"));
+        } else if (enabled) {
+            tvMasterStatusDesc.setText("已开启 · 正在启动后台监听服务...");
+            tvMasterSubHint.setText(lastApplyStatusText);
+            viewSidebarStatusDot.getBackground().setTint(getColor(R.color.status_warning));
+            tvSidebarStatus.setText("启动中...");
+        } else {
+            tvMasterStatusDesc.setText("已关闭 · 开启后将随车机系统日夜模式自动切换壁纸");
+            if (prefs.hasOriginalBackup()) {
+                tvMasterSubHint.setText("仍保留原壁纸备份，再次开启或复原后使用");
+            } else {
+                tvMasterSubHint.setText("当前模式：" + AppPrefs.formatWallpaperMode(mode));
+            }
+            viewSidebarStatusDot.getBackground().setTint(getColor(R.color.status_idle));
+            tvSidebarStatus.setText("未开启");
+        }
 
-        ScrollView sv = new ScrollView(this);
-        TextView tv = new TextView(this);
-        int pad = dpToPx(16);
-        tv.setPadding(pad, pad, pad, pad);
-        tv.setTypeface(Typeface.MONOSPACE);
-        tv.setTextSize(12f);
-        tv.setTextIsSelectable(true);
-        tv.setText(fullReport);
-        sv.addView(tv);
+        boolean isStatic = (mode == AppPrefs.MODE_STATIC_MANAGER);
+        cardModeStatic.setSelected(isStatic);
+        cardModeLive.setSelected(!isStatic);
+        ivModeStaticCheck.setVisibility(isStatic ? View.VISIBLE : View.GONE);
+        ivModeLiveCheck.setVisibility(!isStatic ? View.VISIBLE : View.GONE);
+        ivModeStaticIcon.setColorFilter(getColor(isStatic ? R.color.accent_primary : R.color.text_secondary));
+        ivModeLiveIcon.setColorFilter(getColor(!isStatic ? R.color.accent_primary : R.color.text_secondary));
 
-        AlertDialog.Builder builder = new AlertDialog.Builder(this)
-                .setTitle("车机权限自检与动态授权")
-                .setView(sv)
-                .setNeutralButton("系统应用权限设置", (d, which) -> openAppDetailsSettings())
-                .setNegativeButton("关闭", null);
+        if (!isStatic) {
+            layoutLiveWallpaperAction.setVisibility(View.VISIBLE);
+            boolean active = WallpaperController.isOurLiveWallpaperActive(this);
+            tvLiveWallpaperState.setText(WallpaperController.describeActiveSystemWallpaper(this));
+            tvLiveWallpaperState.setTextColor(getColor(active ? R.color.status_success : R.color.status_warning));
+            btnActivateLiveWallpaper.setVisibility(active ? View.GONE : View.VISIBLE);
+        } else {
+            layoutLiveWallpaperAction.setVisibility(View.GONE);
+        }
+    }
 
-        if (!denied.isEmpty()) {
-            builder.setPositiveButton("申请未授权权限(" + denied.size() + ")", (d, which) -> {
-                AppLogger.i(TAG, "用户主动申请未授予的 BYD 权限 (" + denied.size() + " 项)");
-                requestPermissions(denied.toArray(new String[0]), REQ_RUNTIME_PERMISSIONS);
+    private void refreshHomeWallpaperOverviewAsync() {
+        ioExecutor.execute(() -> {
+            final List<WallpaperRepository.WallpaperItem> dayItems =
+                    WallpaperRepository.listWallpapers(MainActivity.this, false);
+            final List<WallpaperRepository.WallpaperItem> nightItems =
+                    WallpaperRepository.listWallpapers(MainActivity.this, true);
+            final WallpaperRepository.WallpaperItem dayActive =
+                    WallpaperRepository.getActiveItem(MainActivity.this, false);
+            final WallpaperRepository.WallpaperItem nightActive =
+                    WallpaperRepository.getActiveItem(MainActivity.this, true);
+
+            final Bitmap dayBmp = dayActive != null
+                    ? WallpaperController.decodeSampledBitmap(
+                    WallpaperRepository.getWallpaperFile(MainActivity.this, false, dayActive.id), 480, 300)
+                    : null;
+            final Bitmap nightBmp = nightActive != null
+                    ? WallpaperController.decodeSampledBitmap(
+                    WallpaperRepository.getWallpaperFile(MainActivity.this, true, nightActive.id), 480, 300)
+                    : null;
+
+            final int dayMode = prefs.getSelectionMode(false);
+            final int nightMode = prefs.getSelectionMode(true);
+
+            runOnUiThread(() -> {
+                bindHomeOverviewCard(
+                        dayItems.size(), dayMode, dayActive, dayBmp,
+                        ivHomeDayPreview, tvHomeDayEmptyHint, tvHomeDayPolicy, tvHomeDayName);
+                bindHomeOverviewCard(
+                        nightItems.size(), nightMode, nightActive, nightBmp,
+                        ivHomeNightPreview, tvHomeNightEmptyHint, tvHomeNightPolicy, tvHomeNightName);
+            });
+        });
+    }
+
+    private void bindHomeOverviewCard(int count, int selectionMode,
+                                      WallpaperRepository.WallpaperItem activeItem, Bitmap bmp,
+                                      ImageView iv, TextView emptyHint,
+                                      TextView tvPolicy, TextView tvName) {
+        if (count == 0 || activeItem == null) {
+            iv.setImageDrawable(null);
+            emptyHint.setVisibility(View.VISIBLE);
+            tvPolicy.setText("未添加");
+            tvName.setText("点击前往添加壁纸");
+            return;
+        }
+        emptyHint.setVisibility(View.GONE);
+        iv.setImageBitmap(bmp);
+        if (selectionMode == AppPrefs.SELECT_RANDOM) {
+            tvPolicy.setText("随机轮换 · " + count + " 张");
+        } else {
+            tvPolicy.setText("指定单张 · " + count + " 张");
+        }
+        tvName.setText("当前：" + activeItem.displayName);
+    }
+
+    private void setMasterSwitchCheckedSilently(boolean checked) {
+        suppressControlEvents = true;
+        try {
+            switchMasterEnable.setChecked(checked);
+        } finally {
+            suppressControlEvents = false;
+        }
+    }
+
+    private void handleMasterEnableRequested() {
+        List<WallpaperRepository.WallpaperItem> dayItems = WallpaperRepository.listWallpapers(this, false);
+        List<WallpaperRepository.WallpaperItem> nightItems = WallpaperRepository.listWallpapers(this, true);
+
+        if (dayItems.isEmpty() && nightItems.isEmpty()) {
+            setMasterSwitchCheckedSilently(false);
+            new AlertDialog.Builder(this)
+                    .setTitle("尚未添加壁纸")
+                    .setMessage("请先至少添加日间或夜间壁纸，再开启自动切换。")
+                    .setPositiveButton("去添加壁纸", (d, w) -> selectTab(TAB_WALLPAPER))
+                    .setNegativeButton("取消", null)
+                    .show();
+            return;
+        }
+
+        if (dayItems.isEmpty() || nightItems.isEmpty()) {
+            final boolean missingNight = nightItems.isEmpty();
+            String missingLabel = missingNight ? "夜间" : "日间";
+            new AlertDialog.Builder(this)
+                    .setTitle("缺少" + missingLabel + "壁纸")
+                    .setMessage("您尚未添加" + missingLabel + "壁纸，切换到" + missingLabel + "模式时将保持原样。是否继续开启？")
+                    .setPositiveButton("仍然开启", (d, w) -> proceedEnableWithModeCheck())
+                    .setNeutralButton("去补充", (d, w) -> {
+                        setMasterSwitchCheckedSilently(false);
+                        editingNight = missingNight;
+                        selectTab(TAB_WALLPAPER);
+                    })
+                    .setNegativeButton("取消", (d, w) -> setMasterSwitchCheckedSilently(false))
+                    .setOnCancelListener(d -> setMasterSwitchCheckedSilently(false))
+                    .show();
+            return;
+        }
+
+        proceedEnableWithModeCheck();
+    }
+
+    private void proceedEnableWithModeCheck() {
+        int mode = prefs.getWallpaperMode();
+        if (mode == AppPrefs.MODE_STATIC_MANAGER && !prefs.hasOriginalBackup()) {
+            setMasterSwitchCheckedSilently(false);
+            startStaticBackupThenRun(PENDING_ENABLE_STATIC);
+            return;
+        }
+
+        enableServiceAndApply(mode == AppPrefs.MODE_LIVE_SERVICE);
+    }
+
+    private void enableServiceAndApply(boolean checkLiveHint) {
+        requestNotificationPermissionIfNeeded();
+        prefs.setEnabled(true);
+        WallpaperController.resetDedupState();
+        AutoDarkMonitorService.startMonitor(this);
+        AppLogger.i(TAG, "用户开启自动壁纸切换 | 模式=" + AppPrefs.formatWallpaperMode(prefs.getWallpaperMode()));
+        renderHomeStatus();
+
+        if (checkLiveHint && !WallpaperController.isOurLiveWallpaperActive(this)) {
+            new AlertDialog.Builder(this)
+                    .setTitle("请激活系统动态壁纸")
+                    .setMessage("自动切换已开启。使用“动态壁纸模式”需要将本应用设为系统动态壁纸才能在桌面生效。")
+                    .setPositiveButton("前往系统激活", (d, w) -> openLiveWallpaperChooser())
+                    .setNegativeButton("稍后再说", null)
+                    .show();
+        }
+    }
+
+    private void handleMasterDisableRequested() {
+        prefs.setEnabled(false);
+        AutoDarkMonitorService.stopMonitor(this);
+        AppLogger.i(TAG, "用户关闭自动壁纸切换");
+
+        if (prefs.hasOriginalBackup()) {
+            ioExecutor.execute(() -> {
+                try {
+                    WallpaperRepository.restoreOriginalWallpaper(MainActivity.this);
+                    runOnUiThread(() -> {
+                        renderHomeStatus();
+                        Toast.makeText(MainActivity.this, "已关闭并复原原有壁纸", Toast.LENGTH_SHORT).show();
+                    });
+                } catch (Throwable t) {
+                    AppLogger.e(TAG, "关闭开关时复原原壁纸失败", t);
+                    runOnUiThread(() -> {
+                        renderHomeStatus();
+                        new AlertDialog.Builder(MainActivity.this)
+                                .setTitle("复原原壁纸失败")
+                                .setMessage("已关闭自动切换，但复原原有壁纸时出错：" + t.getMessage()
+                                        + "\n备份文件仍已保留，可在调试日志中查看详情。")
+                                .setPositiveButton("知道了", null)
+                                .show();
+                    });
+                }
             });
         } else {
-            builder.setPositiveButton("立即重连硬件", (d, which) -> AutoDarkMonitorService.requestPollNow(this));
+            renderHomeStatus();
+            if (prefs.getWallpaperMode() == AppPrefs.MODE_STATIC_MANAGER) {
+                Toast.makeText(this, "已关闭自动切换（未备份原壁纸）", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "已关闭自动切换", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    private void handleModeSwitchRequested(final int targetMode) {
+        int currentMode = prefs.getWallpaperMode();
+        if (currentMode == targetMode) {
+            return;
+        }
+
+        if (!prefs.isEnabled()) {
+            prefs.setWallpaperMode(targetMode);
+            AppLogger.i(TAG, "切换壁纸模式 -> " + AppPrefs.formatWallpaperMode(targetMode) + " (当前未开启)");
+            renderHomeStatus();
+            return;
+        }
+
+        if (targetMode == AppPrefs.MODE_STATIC_MANAGER) {
+            if (!prefs.hasOriginalBackup()) {
+                startStaticBackupThenRun(PENDING_SWITCH_TO_STATIC);
+                return;
+            }
+            applySwitchToStaticMode();
+            return;
+        }
+
+        // 从直接修改壁纸切换为动态壁纸模式：先复原原有静态壁纸，再启用动态模式
+        if (prefs.hasOriginalBackup()) {
+            ioExecutor.execute(() -> {
+                try {
+                    WallpaperRepository.restoreOriginalWallpaper(MainActivity.this);
+                    runOnUiThread(() -> applySwitchToLiveMode("已复原原有静态壁纸，并切换为动态壁纸模式"));
+                } catch (Throwable t) {
+                    AppLogger.e(TAG, "切换为动态模式前复原原壁纸失败", t);
+                    runOnUiThread(() -> new AlertDialog.Builder(MainActivity.this)
+                            .setTitle("复原原壁纸失败")
+                            .setMessage("切换模式前尝试复原原壁纸失败：" + t.getMessage()
+                                    + "\n是否仍要切换为动态壁纸模式？")
+                            .setPositiveButton("仍然切换", (d, w) -> applySwitchToLiveMode("已切换为动态壁纸模式"))
+                            .setNegativeButton("取消", null)
+                            .show());
+                }
+            });
+        } else {
+            applySwitchToLiveMode("已切换为动态壁纸模式");
+        }
+    }
+
+    private void applySwitchToStaticMode() {
+        prefs.setWallpaperMode(AppPrefs.MODE_STATIC_MANAGER);
+        AppLogger.i(TAG, "切换壁纸模式 -> 直接修改壁纸");
+        renderHomeStatus();
+        AutoDarkMonitorService.notifyConfigUpdated(this);
+        Toast.makeText(this, "已切换为直接修改壁纸模式", Toast.LENGTH_SHORT).show();
+    }
+
+    private void applySwitchToLiveMode(String toastMsg) {
+        prefs.setWallpaperMode(AppPrefs.MODE_LIVE_SERVICE);
+        AppLogger.i(TAG, "切换壁纸模式 -> 动态壁纸模式");
+        renderHomeStatus();
+        AutoDarkMonitorService.notifyConfigUpdated(this);
+        Toast.makeText(this, toastMsg, Toast.LENGTH_SHORT).show();
+    }
+
+    private void startStaticBackupThenRun(final int actionType) {
+        Toast.makeText(this, "正在备份原有壁纸...", Toast.LENGTH_SHORT).show();
+        ioExecutor.execute(() -> {
+            final WallpaperRepository.BackupResult result =
+                    WallpaperRepository.backupCurrentSystemWallpaper(MainActivity.this);
+            runOnUiThread(() -> onBackupResult(actionType, result));
+        });
+    }
+
+    private void onBackupResult(int actionType, WallpaperRepository.BackupResult result) {
+        if (result.status == WallpaperRepository.BackupResult.Status.SUCCESS) {
+            completePendingAction(actionType);
+            return;
+        }
+
+        if (result.status == WallpaperRepository.BackupResult.Status.PERMISSION_REQUIRED) {
+            new AlertDialog.Builder(this)
+                    .setTitle("需要文件访问权限以备份原壁纸")
+                    .setMessage("为了在关闭自动切换后帮您复原原有桌面壁纸，需要先授予文件访问权限以读取系统当前壁纸。\n\n您也可以选择不备份直接继续。")
+                    .setPositiveButton("前往授权", (d, w) -> {
+                        pendingActionAfterPermission = actionType;
+                        requestReadWallpaperPermission();
+                    })
+                    .setNeutralButton("不备份继续", (d, w) -> completePendingAction(actionType))
+                    .setNegativeButton("取消", (d, w) -> {
+                        pendingActionAfterPermission = PENDING_NONE;
+                        renderHomeStatus();
+                    })
+                    .setOnCancelListener(d -> {
+                        pendingActionAfterPermission = PENDING_NONE;
+                        renderHomeStatus();
+                    })
+                    .show();
+            return;
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("无法备份原有壁纸")
+                .setMessage(result.message + "\n\n因此关闭开关后将无法自动复原当前壁纸，是否仍要继续？")
+                .setPositiveButton("不备份继续", (d, w) -> completePendingAction(actionType))
+                .setNegativeButton("取消", (d, w) -> renderHomeStatus())
+                .setOnCancelListener(d -> renderHomeStatus())
+                .show();
+    }
+
+    private void completePendingAction(int actionType) {
+        pendingActionAfterPermission = PENDING_NONE;
+        if (actionType == PENDING_ENABLE_STATIC) {
+            enableServiceAndApply(false);
+        } else if (actionType == PENDING_SWITCH_TO_STATIC) {
+            applySwitchToStaticMode();
+        }
+    }
+
+    private void handlePendingActionAfterPermission() {
+        if (pendingActionAfterPermission == PENDING_NONE) {
+            return;
+        }
+        if (WallpaperRepository.hasReadWallpaperPermission(this)) {
+            int action = pendingActionAfterPermission;
+            pendingActionAfterPermission = PENDING_NONE;
+            startStaticBackupThenRun(action);
+        }
+    }
+
+    private void requestReadWallpaperPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            openAllFilesAccessSettings();
+        } else {
+            requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
+                    REQ_READ_STORAGE_FOR_BACKUP);
+        }
+    }
+
+    private void requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                        REQ_POST_NOTIFICATIONS);
+            }
+        }
+    }
+
+    private void refreshWallpaperPage() {
+        List<WallpaperRepository.WallpaperItem> dayItems = WallpaperRepository.listWallpapers(this, false);
+        List<WallpaperRepository.WallpaperItem> nightItems = WallpaperRepository.listWallpapers(this, true);
+
+        tabWallpaperDay.setText("日间壁纸 (" + dayItems.size() + ")");
+        tabWallpaperNight.setText("夜间壁纸 (" + nightItems.size() + ")");
+        styleSegmentedTab(tabWallpaperDay, !editingNight);
+        styleSegmentedTab(tabWallpaperNight, editingNight);
+
+        int selectionMode = prefs.getSelectionMode(editingNight);
+        boolean isRandom = (selectionMode == AppPrefs.SELECT_RANDOM);
+        styleSegmentedTab(tabStrategyFixed, !isRandom);
+        styleSegmentedTab(tabStrategyRandom, isRandom);
+
+        if (isRandom) {
+            tvWallpaperStrategyDesc.setText("在当前多张壁纸中随机轮换（日夜切换及车机重启时自动换图）");
+        } else {
+            tvWallpaperStrategyDesc.setText("点击下方壁纸设为指定使用，再次点击可查看大图预览");
+        }
+
+        List<WallpaperRepository.WallpaperItem> activeList = editingNight ? nightItems : dayItems;
+        if (activeList.isEmpty()) {
+            gridWallpapers.setVisibility(View.GONE);
+            layoutWallpaperEmpty.setVisibility(View.VISIBLE);
+            tvWallpaperEmptyTitle.setText(editingNight ? "还没有添加夜间壁纸" : "还没有添加日间壁纸");
+        } else {
+            layoutWallpaperEmpty.setVisibility(View.GONE);
+            gridWallpapers.setVisibility(View.VISIBLE);
+        }
+
+        String selectedId = prefs.getSelectedWallpaperId(editingNight);
+        String activeId = prefs.getActiveWallpaperId(editingNight);
+        gridAdapter.updateData(activeList, editingNight, selectionMode, selectedId, activeId);
+    }
+
+    private void styleSegmentedTab(TextView tab, boolean selected) {
+        tab.setSelected(selected);
+        tab.setTextColor(getColor(selected ? R.color.accent_primary : R.color.text_secondary));
+        tab.setTypeface(null, selected ? Typeface.BOLD : Typeface.NORMAL);
+    }
+
+    private void updateSelectionMode(int mode) {
+        int current = prefs.getSelectionMode(editingNight);
+        if (current == mode) {
+            return;
+        }
+        prefs.setSelectionMode(editingNight, mode);
+        String modeLabel = editingNight ? "夜间" : "日间";
+        AppLogger.i(TAG, modeLabel + "壁纸策略切换 -> " + (mode == AppPrefs.SELECT_RANDOM ? "随机轮换" : "使用指定壁纸"));
+        refreshWallpaperPage();
+        refreshHomeWallpaperOverviewAsync();
+
+        if (prefs.isEnabled() && isSystemNightNow() == editingNight) {
+            WallpaperController.resetDedupState();
+            AutoDarkMonitorService.notifyConfigUpdated(this);
+        } else {
+            WallpaperController.notifyLibraryChanged(this);
+        }
+    }
+
+    private void handleWallpaperItemClicked(WallpaperRepository.WallpaperItem item) {
+        int selectionMode = prefs.getSelectionMode(editingNight);
+        String currentSelected = prefs.getSelectedWallpaperId(editingNight);
+
+        if (selectionMode == AppPrefs.SELECT_FIXED && !item.id.equals(currentSelected)) {
+            prefs.setSelectedWallpaperId(editingNight, item.id);
+            prefs.setActiveWallpaperId(editingNight, item.id);
+            AppLogger.i(TAG, "指定" + (editingNight ? "夜间" : "日间") + "壁纸 -> " + item.displayName);
+            refreshWallpaperPage();
+            refreshHomeWallpaperOverviewAsync();
+
+            if (prefs.isEnabled() && isSystemNightNow() == editingNight) {
+                WallpaperController.resetDedupState();
+                AutoDarkMonitorService.notifyConfigUpdated(this);
+            } else {
+                WallpaperController.notifyLibraryChanged(this);
+            }
+            Toast.makeText(this, "已设为" + (editingNight ? "夜间" : "日间") + "壁纸", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        showWallpaperPreviewDialog(item);
+    }
+
+    private void showWallpaperPreviewDialog(final WallpaperRepository.WallpaperItem item) {
+        File file = WallpaperRepository.getWallpaperFile(this, editingNight, item.id);
+        Bitmap preview = WallpaperController.decodeSampledBitmap(file, 1280, 800);
+
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        int pad = dpToPx(16);
+        container.setPadding(pad, pad, pad, pad / 2);
+
+        ImageView iv = new ImageView(this);
+        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        iv.setAdjustViewBounds(true);
+        LinearLayout.LayoutParams ivParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(260));
+        iv.setLayoutParams(ivParams);
+        if (preview != null) {
+            iv.setImageBitmap(preview);
+        }
+        container.addView(iv);
+
+        TextView tvInfo = new TextView(this);
+        tvInfo.setPadding(0, dpToPx(10), 0, 0);
+        tvInfo.setText(item.displayName + "\n分辨率：" + item.width + " × " + item.height);
+        tvInfo.setTextSize(13f);
+        container.addView(tvInfo);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle((editingNight ? "夜间壁纸预览" : "日间壁纸预览"))
+                .setView(container)
+                .setPositiveButton("关闭", null)
+                .setNegativeButton("删除此壁纸", (d, w) -> confirmDeleteWallpaper(item));
+
+        if (prefs.getSelectionMode(editingNight) == AppPrefs.SELECT_RANDOM) {
+            builder.setNeutralButton("改用指定此壁纸", (d, w) -> {
+                prefs.setSelectionMode(editingNight, AppPrefs.SELECT_FIXED);
+                prefs.setSelectedWallpaperId(editingNight, item.id);
+                prefs.setActiveWallpaperId(editingNight, item.id);
+                refreshWallpaperPage();
+                refreshHomeWallpaperOverviewAsync();
+                if (prefs.isEnabled() && isSystemNightNow() == editingNight) {
+                    WallpaperController.resetDedupState();
+                    AutoDarkMonitorService.notifyConfigUpdated(this);
+                } else {
+                    WallpaperController.notifyLibraryChanged(this);
+                }
+            });
         }
         builder.show();
+    }
+
+    private void confirmDeleteWallpaper(final WallpaperRepository.WallpaperItem item) {
+        new AlertDialog.Builder(this)
+                .setTitle("删除壁纸")
+                .setMessage("确定要从" + (editingNight ? "夜间" : "日间") + "壁纸中移除“" + item.displayName + "”吗？")
+                .setPositiveButton("删除", (d, w) -> ioExecutor.execute(() -> {
+                    try {
+                        WallpaperRepository.deleteWallpaper(MainActivity.this, editingNight, item.id);
+                        runOnUiThread(() -> {
+                            refreshWallpaperPage();
+                            refreshHomeWallpaperOverviewAsync();
+                            if (prefs.isEnabled() && isSystemNightNow() == editingNight) {
+                                WallpaperController.resetDedupState();
+                                AutoDarkMonitorService.notifyConfigUpdated(MainActivity.this);
+                            } else {
+                                WallpaperController.notifyLibraryChanged(MainActivity.this);
+                            }
+                            Toast.makeText(MainActivity.this, "已删除", Toast.LENGTH_SHORT).show();
+                        });
+                    } catch (Throwable t) {
+                        AppLogger.e(TAG, "删除壁纸失败: id=" + item.id, t);
+                        runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                                "删除失败: " + t.getMessage(), Toast.LENGTH_LONG).show());
+                    }
+                }))
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void launchWallpaperPicker() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("image/*");
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+            startActivityForResult(intent, REQ_PICK_WALLPAPERS);
+        } catch (Throwable t) {
+            AppLogger.e(TAG, "打开系统图片选择器失败", t);
+            Toast.makeText(this, "无法打开图片选择器: " + t.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void openLiveWallpaperChooser() {
+        try {
+            Intent intent = new Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER);
+            intent.putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
+                    new ComponentName(this, AutoDarkWallpaperService.class));
+            AppLogger.i(TAG, "打开系统动态壁纸激活界面");
+            startActivity(intent);
+        } catch (Throwable t) {
+            AppLogger.e(TAG, "打开系统动态壁纸选择页失败", t);
+            Toast.makeText(this,
+                    "无法直接打开动态壁纸设置页，请尝试在车机系统壁纸设置中选取，或切换为“直接修改壁纸”模式",
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void populateAboutInfo() {
+        String versionName = "2.0.0";
+        try {
+            PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+            versionName = pi.versionName;
+        } catch (Throwable t) {
+            AppLogger.e(TAG, "读取应用版本失败", t);
+        }
+        tvAboutVersion.setText("版本 v" + versionName);
+        tvAboutDeviceInfo.setText(Build.MANUFACTURER + " " + Build.MODEL
+                + " · Android " + Build.VERSION.RELEASE + " (SDK " + Build.VERSION.SDK_INT + ")");
+    }
+
+    private void syncDebugConsoleState() {
+        boolean debugEnabled = prefs.isDebugModeEnabled();
+        suppressControlEvents = true;
+        try {
+            switchDebugMode.setChecked(debugEnabled);
+        } finally {
+            suppressControlEvents = false;
+        }
+
+        cardDebugConsole.setVisibility(debugEnabled ? View.VISIBLE : View.GONE);
+        if (debugEnabled) {
+            refreshLogLocationText();
+            registerLogListenerIfNeeded();
+        } else {
+            unregisterLogListenerIfNeeded();
+        }
+    }
+
+    private void registerLogListenerIfNeeded() {
+        if (!logListenerRegistered) {
+            AppLogger.addListener(logListener);
+            logListenerRegistered = true;
+        }
+    }
+
+    private void unregisterLogListenerIfNeeded() {
+        if (logListenerRegistered) {
+            AppLogger.removeListener(logListener);
+            logListenerRegistered = false;
+        }
+    }
+
+    private void refreshLogLocationText() {
+        if (tvLogFilePath != null) {
+            tvLogFilePath.setText(AppLogger.getLogLocationSummary(this) + "（点击可修改保存位置）");
+        }
     }
 
     private void showLogPathConfigDialog() {
@@ -690,7 +1089,7 @@ public class MainActivity extends Activity {
 
         TextView tvDesc = new TextView(this);
         tvDesc.setText("当前保存文件：" + AppLogger.getLogFilePath()
-                + "\n\n点击下方预设位置可一键填入（推荐 Download/BYDAutoDarkLogs，车机自带文件管理器可直接访问与拷贝到 U 盘），也可手动输入任意路径：");
+                + "\n\n可点击下方预设目录，或通过系统文件选择器导出到 U 盘/任意目录：");
         tvDesc.setTextSize(12f);
         root.addView(tvDesc);
 
@@ -730,7 +1129,7 @@ public class MainActivity extends Activity {
         String safTree = prefs.getLogSafTreeUri();
         if (safTree != null && !safTree.trim().isEmpty()) {
             TextView tvSafStatus = new TextView(this);
-            tvSafStatus.setText("\n已绑定 SAF 同步导出目录：" + safTree);
+            tvSafStatus.setText("\n已绑定 SAF 导出目录：" + safTree);
             tvSafStatus.setTextSize(11f);
             root.addView(tvSafStatus);
         }
@@ -756,7 +1155,7 @@ public class MainActivity extends Activity {
         }
 
         new AlertDialog.Builder(this)
-                .setTitle("设置日志保存位置与导出方式")
+                .setTitle("设置日志保存位置")
                 .setView(sv)
                 .setPositiveButton("应用此路径", (dialog, which) -> {
                     final String input = etPath.getText().toString().trim();
@@ -782,7 +1181,7 @@ public class MainActivity extends Activity {
         AlertDialog.Builder builder = new AlertDialog.Builder(this)
                 .setTitle("自定义日志目录不可用")
                 .setMessage("路径: " + path + "\n错误原因: " + error.getMessage()
-                        + "\n\n建议：可点击“使用系统文件选择器”选择 U 盘或公共目录，或开启所有文件访问权限。")
+                        + "\n\n建议：使用系统文件选择器导出，或开启所有文件访问权限。")
                 .setNegativeButton("关闭", null);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
             builder.setPositiveButton("开启所有文件访问权限", (d, w) -> openAllFilesAccessSettings());
@@ -799,7 +1198,7 @@ public class MainActivity extends Activity {
                     | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
             startActivityForResult(intent, REQ_PICK_LOG_TREE);
         } catch (Throwable t) {
-            AppLogger.e(TAG, "拉起系统目录选择器(ACTION_OPEN_DOCUMENT_TREE)失败", t);
+            AppLogger.e(TAG, "拉起系统目录选择器失败", t);
             Toast.makeText(this, "无法打开目录选择器: " + t.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
@@ -813,19 +1212,8 @@ public class MainActivity extends Activity {
                     "autodark_export_" + AppLogger.formatExportTimestamp() + ".log");
             startActivityForResult(intent, REQ_CREATE_LOG_FILE);
         } catch (Throwable t) {
-            AppLogger.e(TAG, "拉起系统文件另存界面(ACTION_CREATE_DOCUMENT)失败", t);
+            AppLogger.e(TAG, "拉起系统文件另存界面失败", t);
             Toast.makeText(this, "无法打开另存界面: " + t.getMessage(), Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private void openAppDetailsSettings() {
-        try {
-            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                    Uri.parse("package:" + getPackageName()));
-            startActivity(intent);
-        } catch (Throwable t) {
-            AppLogger.e(TAG, "打开系统应用详情设置页失败", t);
-            Toast.makeText(this, "无法打开应用权限设置: " + t.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
@@ -838,212 +1226,145 @@ public class MainActivity extends Activity {
                     Uri.parse("package:" + getPackageName()));
             startActivity(intent);
         } catch (Throwable t) {
-            AppLogger.w(TAG, "打开应用级所有文件权限设置失败，尝试打开通用设置: " + t.getMessage());
+            AppLogger.w(TAG, "打开应用级所有文件权限设置失败，尝试通用设置: " + t.getMessage());
             try {
                 startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
             } catch (Throwable t2) {
-                AppLogger.e(TAG, "打开通用所有文件访问权限设置失败", t2);
-                Toast.makeText(this, "系统未提供所有文件访问设置页，请改用系统文件选择器导出", Toast.LENGTH_LONG).show();
+                AppLogger.e(TAG, "打开所有文件访问权限设置失败", t2);
+                Toast.makeText(this, "系统未提供所有文件访问设置页", Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (resultCode != RESULT_OK || data == null) {
+            return;
+        }
+
+        if (requestCode == REQ_PICK_WALLPAPERS) {
+            final List<Uri> uris = extractSelectedUris(data);
+            if (uris.isEmpty()) {
+                return;
+            }
+            final boolean targetNight = editingNight;
+            Toast.makeText(this, "正在导入 " + uris.size() + " 张图片...", Toast.LENGTH_SHORT).show();
+            ioExecutor.execute(() -> {
+                try {
+                    WallpaperRepository.ImportResult res =
+                            WallpaperRepository.importWallpapersFromUris(MainActivity.this, uris, targetNight);
+                    runOnUiThread(() -> {
+                        refreshWallpaperPage();
+                        refreshHomeWallpaperOverviewAsync();
+                        if (prefs.isEnabled() && isSystemNightNow() == targetNight) {
+                            WallpaperController.resetDedupState();
+                            AutoDarkMonitorService.notifyConfigUpdated(MainActivity.this);
+                        } else {
+                            WallpaperController.notifyLibraryChanged(MainActivity.this);
+                        }
+                        String msg = "已导入 " + res.importedItems.size() + " 张" + (targetNight ? "夜间" : "日间") + "壁纸";
+                        if (!res.errorMessages.isEmpty()) {
+                            msg += "（" + res.errorMessages.size() + " 张导入失败）";
+                        }
+                        Toast.makeText(MainActivity.this, msg, Toast.LENGTH_LONG).show();
+                    });
+                } catch (Throwable t) {
+                    AppLogger.e(TAG, "导入壁纸失败", t);
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                            "导入失败: " + t.getMessage(), Toast.LENGTH_LONG).show());
+                }
+            });
+            return;
+        }
+
+        final Uri uri = data.getData();
+        if (uri == null) {
+            return;
+        }
+
+        if (requestCode == REQ_PICK_LOG_TREE) {
+            try {
+                final int takeFlags = data.getFlags()
+                        & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                getContentResolver().takePersistableUriPermission(uri, takeFlags);
+            } catch (Throwable t) {
+                AppLogger.w(TAG, "持久化 SAF 目录权限失败: " + t.getMessage());
+            }
+            prefs.setLogSafTreeUri(uri.toString());
+            AppLogger.i(TAG, "已绑定 SAF 日志导出目录 URI=" + uri);
+            refreshLogLocationText();
+
+            ioExecutor.execute(() -> {
+                try {
+                    Uri exported = AppLogger.exportLogsToSafTree(MainActivity.this, uri);
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                            "SAF 目录绑定成功，已导出验证文件: " + exported, Toast.LENGTH_LONG).show());
+                } catch (Throwable t) {
+                    AppLogger.e(TAG, "导出日志到 SAF 目录失败: uri=" + uri, t);
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                            "SAF 目录导出失败: " + t.getMessage(), Toast.LENGTH_LONG).show());
+                }
+            });
+            return;
+        }
+
+        if (requestCode == REQ_CREATE_LOG_FILE) {
+            ioExecutor.execute(() -> {
+                try {
+                    AppLogger.writeLogsToUri(MainActivity.this, uri);
+                    AppLogger.i(TAG, "日志已另存为文件 URI=" + uri);
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                            "日志另存成功: " + uri, Toast.LENGTH_LONG).show());
+                } catch (Throwable t) {
+                    AppLogger.e(TAG, "另存日志文件失败: uri=" + uri, t);
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                            "另存失败: " + t.getMessage(), Toast.LENGTH_LONG).show());
+                }
+            });
+        }
+    }
+
+    private List<Uri> extractSelectedUris(Intent data) {
+        List<Uri> uris = new ArrayList<>();
+        ClipData clip = data.getClipData();
+        if (clip != null) {
+            for (int i = 0; i < clip.getItemCount(); i++) {
+                Uri itemUri = clip.getItemAt(i).getUri();
+                if (itemUri != null) {
+                    uris.add(itemUri);
+                }
+            }
+        }
+        if (uris.isEmpty() && data.getData() != null) {
+            uris.add(data.getData());
+        }
+        return uris;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQ_READ_STORAGE_FOR_BACKUP) {
+            int action = pendingActionAfterPermission;
+            pendingActionAfterPermission = PENDING_NONE;
+            if (action == PENDING_NONE) {
+                return;
+            }
+            if (WallpaperRepository.hasReadWallpaperPermission(this)) {
+                startStaticBackupThenRun(action);
+            } else {
+                new AlertDialog.Builder(this)
+                        .setTitle("未获得文件读取权限")
+                        .setMessage("无法读取并备份您当前的系统壁纸，关闭开关后将无法自动复原原壁纸。是否继续？")
+                        .setPositiveButton("不备份继续", (d, w) -> completePendingAction(action))
+                        .setNegativeButton("取消", (d, w) -> renderHomeStatus())
+                        .show();
             }
         }
     }
 
     private int dpToPx(int dp) {
         return Math.round(dp * getResources().getDisplayMetrics().density);
-    }
-
-    private void openLiveWallpaperChooser() {
-        try {
-            Intent intent = new Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER);
-            intent.putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-                    new ComponentName(this, AutoDarkWallpaperService.class));
-            AppLogger.i(TAG, "打开系统动态壁纸预览与激活界面...");
-            startActivity(intent);
-        } catch (Throwable t) {
-            AppLogger.e(TAG, "打开 ACTION_CHANGE_LIVE_WALLPAPER 失败（车机系统可能精简了原生动态壁纸预览器）", t);
-            Toast.makeText(this,
-                    "无法直接跳转动态壁纸激活页面（详见日志），请尝试使用静态壁纸模式或从系统壁纸设置中选取",
-                    Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private void launchImagePicker(int requestCode) {
-        try {
-            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("image/*");
-            startActivityForResult(intent, requestCode);
-        } catch (Throwable t) {
-            AppLogger.e(TAG, "拉起系统图片选择器失败", t);
-            Toast.makeText(this, "无法打开图片选择器: " + t.getMessage(), Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private void refreshWallpaperPreviewsAsync() {
-        ioExecutor.execute(() -> {
-            try {
-                WallpaperController.ensureDefaultWallpapers(MainActivity.this);
-                File lightFile = WallpaperController.getLightWallpaperFile(MainActivity.this);
-                File darkFile = WallpaperController.getDarkWallpaperFile(MainActivity.this);
-                final Bitmap lightBmp = WallpaperController.decodeSampledBitmap(lightFile, 640, 400);
-                final Bitmap darkBmp = WallpaperController.decodeSampledBitmap(darkFile, 640, 400);
-                final String lightMeta = (prefs.isLightCustom() ? "自定义 · " : "内置测试 · ")
-                        + WallpaperController.getImageDimensionsText(lightFile);
-                final String darkMeta = (prefs.isDarkCustom() ? "自定义 · " : "内置测试 · ")
-                        + WallpaperController.getImageDimensionsText(darkFile);
-                runOnUiThread(() -> {
-                    if (lightBmp != null) {
-                        ivPreviewLight.setImageBitmap(lightBmp);
-                    }
-                    if (darkBmp != null) {
-                        ivPreviewDark.setImageBitmap(darkBmp);
-                    }
-                    tvLightMeta.setText(lightMeta);
-                    tvDarkMeta.setText(darkMeta);
-                });
-            } catch (Throwable t) {
-                AppLogger.e(TAG, "加载壁纸缩略图失败", t);
-            }
-        });
-    }
-
-    private void refreshLiveWallpaperStatusText() {
-        boolean active = WallpaperController.isOurLiveWallpaperActive(this);
-        String desc = WallpaperController.describeActiveSystemWallpaper(this);
-        tvLiveWallpaperStatus.setText("动态壁纸服务：" + desc);
-        tvLiveWallpaperStatus.setTextColor(Color.parseColor(active ? "#34D399" : "#FBBF24"));
-    }
-
-    private void renderTelemetry(boolean running,
-                                 VehicleStateMonitor.TelemetrySnapshot s,
-                                 VehicleStateMonitor.EvaluationResult eval) {
-        if (tvServiceStatus == null) {
-            return;
-        }
-        tvServiceStatus.setText("监控服务状态：" + (running ? "运行中（前台保活）" : "已停止"));
-        tvServiceStatus.setTextColor(Color.parseColor(running ? "#34D399" : "#F87171"));
-        btnToggleService.setText(running ? getString(R.string.btn_stop_service) : getString(R.string.btn_start_service));
-
-        if (eval != null && eval.valid) {
-            tvEvaluatedMode.setText("当前判定模式：" + (eval.targetDark ? "夜间暗色 (DARK)" : "日间亮色 (LIGHT)")
-                    + " · " + eval.reason);
-            tvEvaluatedMode.setTextColor(Color.parseColor(eval.targetDark ? "#818CF8" : "#38BDF8"));
-        } else {
-            String err = (eval != null) ? (eval.reason + " | " + eval.errorDetail) : "尚未评估";
-            tvEvaluatedMode.setText("当前判定模式：未能判定 (" + err + ")");
-            tvEvaluatedMode.setTextColor(Color.parseColor("#FBBF24"));
-        }
-
-        if (s != null) {
-            if (s.systemError != null) {
-                tvTelemetrySystem.setText("系统 uiMode：读取失败 -> " + s.systemError);
-                tvTelemetrySystem.setTextColor(Color.parseColor("#F87171"));
-            } else {
-                tvTelemetrySystem.setText("系统 uiMode："
-                        + VehicleStateMonitor.formatSystemNightMask(s.systemUiModeNightMask)
-                        + " | UiModeManager=" + s.uiModeManagerNightMode);
-                tvTelemetrySystem.setTextColor(Color.parseColor("#F1F5F9"));
-            }
-
-            if (s.lightDeviceConnected) {
-                String warn = (s.lightDeviceError != null) ? (" | [仅轮询: " + s.lightDeviceError + "]") : "";
-                tvTelemetryLight.setText("车灯 BYDAutoLightDevice：[已连接] 小灯="
-                        + VehicleStateMonitor.formatLightState(s.sideLightStatus)
-                        + " | 近光=" + VehicleStateMonitor.formatLightState(s.lowBeamStatus)
-                        + " | 远光=" + VehicleStateMonitor.formatLightState(s.highBeamStatus)
-                        + " | AUTO=" + VehicleStateMonitor.formatLightState(s.autoLightStatus)
-                        + warn);
-                tvTelemetryLight.setTextColor(Color.parseColor(s.lightDeviceError != null ? "#FBBF24" : "#34D399"));
-            } else {
-                tvTelemetryLight.setText("车灯 BYDAutoLightDevice：[未连接] " + s.lightDeviceError);
-                tvTelemetryLight.setTextColor(Color.parseColor("#F87171"));
-            }
-
-            if (s.sensorDeviceConnected) {
-                String warn = (s.sensorDeviceError != null) ? (" | [仅轮询: " + s.sensorDeviceError + "]") : "";
-                tvTelemetrySensor.setText("光感 BYDAutoSensorDevice：[已连接] getLightIntensity()="
-                        + AppLogger.formatBydReturnCode(s.lightIntensityLevel)
-                        + warn);
-                tvTelemetrySensor.setTextColor(Color.parseColor(s.sensorDeviceError != null ? "#FBBF24" : "#34D399"));
-            } else {
-                tvTelemetrySensor.setText("光感 BYDAutoSensorDevice：[未连接] " + s.sensorDeviceError);
-                tvTelemetrySensor.setTextColor(Color.parseColor("#F87171"));
-            }
-
-            if (s.bodyworkDeviceConnected) {
-                String warn = (s.bodyworkDeviceError != null) ? (" | [仅轮询: " + s.bodyworkDeviceError + "]") : "";
-                tvTelemetryBodywork.setText("电源 BYDAutoBodyworkDevice：[已连接] powerLevel="
-                        + VehicleStateMonitor.formatPowerLevel(s.powerLevel)
-                        + warn);
-                tvTelemetryBodywork.setTextColor(Color.parseColor(s.bodyworkDeviceError != null ? "#FBBF24" : "#34D399"));
-            } else {
-                tvTelemetryBodywork.setText("电源 BYDAutoBodyworkDevice：[未连接] " + s.bodyworkDeviceError);
-                tvTelemetryBodywork.setTextColor(Color.parseColor("#FBBF24"));
-            }
-        }
-
-        if (eval != null) {
-            String warnPart = (eval.errorDetail != null && !eval.errorDetail.isEmpty())
-                    ? (" | 细节/错误: " + eval.errorDetail) : "";
-            tvTelemetryDecision.setText("触发判定：[" + AppPrefs.formatTriggerSource(prefs.getActiveTriggerSource())
-                    + "] -> " + (eval.valid ? (eval.targetDark ? "DARK" : "LIGHT") : "INVALID")
-                    + " (" + eval.reason + ")" + warnPart);
-            tvTelemetryDecision.setTextColor(Color.parseColor(eval.valid ? "#14B8A6" : "#F87171"));
-        }
-
-        refreshLiveWallpaperStatusText();
-    }
-
-    private void requestAppPermissionsIfNeeded() {
-        List<String> permsToRequest = new ArrayList<>();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                    != PackageManager.PERMISSION_GRANTED) {
-                permsToRequest.add(Manifest.permission.POST_NOTIFICATIONS);
-            }
-        }
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
-            if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                    != PackageManager.PERMISSION_GRANTED) {
-                permsToRequest.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
-            }
-            if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE)
-                    != PackageManager.PERMISSION_GRANTED) {
-                permsToRequest.add(Manifest.permission.READ_EXTERNAL_STORAGE);
-            }
-        }
-        List<String> deniedByd = VehicleStateMonitor.checkAndLogBydPermissions(this);
-        for (String perm : deniedByd) {
-            if (!permsToRequest.contains(perm)) {
-                permsToRequest.add(perm);
-            }
-        }
-
-        if (!permsToRequest.isEmpty()) {
-            AppLogger.i(TAG, "发起运行时权限动态申请 (" + permsToRequest.size() + " 项): " + permsToRequest);
-            requestPermissions(permsToRequest.toArray(new String[0]), REQ_RUNTIME_PERMISSIONS);
-        }
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQ_RUNTIME_PERMISSIONS && permissions != null && grantResults != null) {
-            StringBuilder sb = new StringBuilder();
-            boolean anyGranted = false;
-            for (int i = 0; i < permissions.length && i < grantResults.length; i++) {
-                boolean granted = (grantResults[i] == PackageManager.PERMISSION_GRANTED);
-                if (granted) {
-                    anyGranted = true;
-                }
-                sb.append(" - ").append(permissions[i]).append(": ")
-                        .append(granted ? "GRANTED" : "DENIED").append('\n');
-            }
-            AppLogger.i(TAG, "动态权限申请回调结果:\n" + sb.toString().trim());
-            if (anyGranted && AutoDarkMonitorService.isRunning()) {
-                AppLogger.i(TAG, "存在新授予权限，立即刷新并重连硬件接口");
-                AutoDarkMonitorService.requestPollNow(this);
-            }
-        }
     }
 }

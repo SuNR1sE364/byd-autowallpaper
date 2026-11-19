@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -20,15 +21,16 @@ import android.view.animation.DecelerateInterpolator;
 import com.byd.autodarkwallpaper.config.AppPrefs;
 import com.byd.autodarkwallpaper.util.AppLogger;
 import com.byd.autodarkwallpaper.wallpaper.WallpaperController;
+import com.byd.autodarkwallpaper.wallpaper.WallpaperRepository;
 
+import java.io.File;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * 动态壁纸引擎服务（模式 B / 双模式兼容）。
- * 系统激活本服务作为壁纸后，支持日间与夜间壁纸之间 400ms 平滑淡入淡出过渡，且无磁盘重复写入开销。
+ * 动态壁纸引擎服务：支持日间与夜间多壁纸管理与 400ms 平滑淡入淡出切换。
  */
 public class AutoDarkWallpaperService extends WallpaperService {
 
@@ -38,15 +40,19 @@ public class AutoDarkWallpaperService extends WallpaperService {
     private static final Set<AutoDarkEngine> ACTIVE_ENGINES = new CopyOnWriteArraySet<>();
 
     public static void notifyTargetStateChanged(boolean isDark, String reason) {
-        AppLogger.i(TAG, "通知存活的动态壁纸 Engine (" + ACTIVE_ENGINES.size()
-                + " 个) 切换为 isDark=" + isDark + ", reason=" + reason);
+        notifyTargetStateChanged(isDark, null, reason);
+    }
+
+    public static void notifyTargetStateChanged(boolean isDark, String itemId, String reason) {
+        AppLogger.i(TAG, "通知动态壁纸 Engine (" + ACTIVE_ENGINES.size()
+                + " 个) 切换为 isDark=" + isDark + ", itemId=" + itemId + ", reason=" + reason);
         for (AutoDarkEngine engine : ACTIVE_ENGINES) {
-            engine.setTargetDark(isDark, true);
+            engine.applyTarget(isDark, itemId, true);
         }
     }
 
     public static void notifyImagesReloaded() {
-        AppLogger.i(TAG, "通知动态壁纸 Engine 重新加载壁纸图片 (" + ACTIVE_ENGINES.size() + " 个)");
+        AppLogger.i(TAG, "通知动态壁纸 Engine 重新加载壁纸库 (" + ACTIVE_ENGINES.size() + " 个)");
         for (AutoDarkEngine engine : ACTIVE_ENGINES) {
             engine.reloadBitmapsAsync();
         }
@@ -70,23 +76,25 @@ public class AutoDarkWallpaperService extends WallpaperService {
         private final Handler mainHandler = new Handler(Looper.getMainLooper());
         private final ExecutorService decodeExecutor = Executors.newSingleThreadExecutor();
         private final Paint bitmapPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-        private final Paint errorTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint hintPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Rect srcRect = new Rect();
         private final Rect dstRect = new Rect();
 
         private Bitmap lightBitmap;
         private Bitmap darkBitmap;
+        private String loadedLightId;
+        private String loadedDarkId;
         private int surfaceWidth = 0;
         private int surfaceHeight = 0;
         private boolean visible = false;
         private boolean targetDark = false;
-        private float darkBlend = 0f; // 0.0f = 纯亮色，1.0f = 纯暗色
+        private float darkBlend = 0f; // 0.0f = 纯日间，1.0f = 纯夜间
         private ValueAnimator blendAnimator;
         private BroadcastReceiver stateReceiver;
 
         AutoDarkEngine() {
-            errorTextPaint.setColor(Color.WHITE);
-            errorTextPaint.setTextSize(32f);
+            hintPaint.setTextAlign(Paint.Align.CENTER);
+            hintPaint.setTextSize(34f);
         }
 
         @Override
@@ -124,7 +132,7 @@ public class AutoDarkWallpaperService extends WallpaperService {
             if (visible) {
                 boolean latestDark = resolveInitialDarkState();
                 if (latestDark != targetDark) {
-                    setTargetDark(latestDark, false);
+                    applyTarget(latestDark, null, false);
                 } else {
                     drawFrame();
                 }
@@ -161,9 +169,8 @@ public class AutoDarkWallpaperService extends WallpaperService {
             if (saved == AppPrefs.TARGET_STATE_LIGHT) {
                 return false;
             }
-            int mask = getResources().getConfiguration().uiMode
-                    & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
-            return mask == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+            int mask = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+            return mask == Configuration.UI_MODE_NIGHT_YES;
         }
 
         private void registerStateReceiver() {
@@ -176,7 +183,8 @@ public class AutoDarkWallpaperService extends WallpaperService {
                     String action = intent.getAction();
                     if (WallpaperController.ACTION_WALLPAPER_STATE_CHANGED.equals(action)) {
                         boolean isDark = intent.getBooleanExtra(WallpaperController.EXTRA_IS_DARK, false);
-                        setTargetDark(isDark, true);
+                        String itemId = intent.getStringExtra(WallpaperController.EXTRA_ITEM_ID);
+                        applyTarget(isDark, itemId, true);
                     } else if (WallpaperController.ACTION_WALLPAPER_IMAGES_RELOADED.equals(action)) {
                         reloadBitmapsAsync();
                     }
@@ -192,28 +200,81 @@ public class AutoDarkWallpaperService extends WallpaperService {
             }
         }
 
-        void setTargetDark(boolean isDark, boolean animate) {
-            mainHandler.post(() -> {
-                targetDark = isDark;
-                float targetBlend = isDark ? 1f : 0f;
-                if (blendAnimator != null) {
-                    blendAnimator.cancel();
-                    blendAnimator = null;
+        void applyTarget(final boolean isDark, final String itemId, final boolean animate) {
+            final int reqW = surfaceWidth > 0 ? surfaceWidth : 1920;
+            final int reqH = surfaceHeight > 0 ? surfaceHeight : 1200;
+
+            decodeExecutor.execute(() -> {
+                WallpaperRepository.WallpaperItem resolved = null;
+                File targetFile = null;
+                if (itemId != null && !itemId.isEmpty()) {
+                    targetFile = WallpaperRepository.getWallpaperFile(
+                            AutoDarkWallpaperService.this, isDark, itemId);
                 }
-                if (!animate || !visible || Math.abs(darkBlend - targetBlend) < 0.001f) {
-                    darkBlend = targetBlend;
-                    drawFrame();
-                    return;
+                if (targetFile == null || !targetFile.exists()) {
+                    resolved = WallpaperRepository.getActiveItem(AutoDarkWallpaperService.this, isDark);
+                    if (resolved != null) {
+                        targetFile = WallpaperRepository.getWallpaperFile(
+                                AutoDarkWallpaperService.this, isDark, resolved.id);
+                    }
                 }
-                blendAnimator = ValueAnimator.ofFloat(darkBlend, targetBlend);
-                blendAnimator.setDuration(TRANSITION_DURATION_MS);
-                blendAnimator.setInterpolator(new DecelerateInterpolator());
-                blendAnimator.addUpdateListener(anim -> {
-                    darkBlend = (float) anim.getAnimatedValue();
-                    drawFrame();
+                final String finalId = (itemId != null && !itemId.isEmpty())
+                        ? itemId
+                        : (resolved != null ? resolved.id : null);
+
+                String currentlyLoadedId = isDark ? loadedDarkId : loadedLightId;
+                Bitmap currentBmp = isDark ? darkBitmap : lightBitmap;
+                boolean needReload = (finalId == null && currentBmp != null)
+                        || (finalId != null && (!finalId.equals(currentlyLoadedId) || currentBmp == null));
+
+                Bitmap decoded = null;
+                if (needReload && targetFile != null && targetFile.exists()) {
+                    decoded = WallpaperController.decodeSampledBitmap(targetFile, reqW, reqH);
+                }
+
+                final boolean shouldUpdateBitmap = needReload;
+                final Bitmap newBitmap = decoded;
+                mainHandler.post(() -> {
+                    if (shouldUpdateBitmap) {
+                        if (isDark) {
+                            if (darkBitmap != null && !darkBitmap.isRecycled()) {
+                                darkBitmap.recycle();
+                            }
+                            darkBitmap = newBitmap;
+                            loadedDarkId = finalId;
+                        } else {
+                            if (lightBitmap != null && !lightBitmap.isRecycled()) {
+                                lightBitmap.recycle();
+                            }
+                            lightBitmap = newBitmap;
+                            loadedLightId = finalId;
+                        }
+                    }
+                    animateToTargetDark(isDark, animate);
                 });
-                blendAnimator.start();
             });
+        }
+
+        private void animateToTargetDark(boolean isDark, boolean animate) {
+            targetDark = isDark;
+            float targetBlend = isDark ? 1f : 0f;
+            if (blendAnimator != null) {
+                blendAnimator.cancel();
+                blendAnimator = null;
+            }
+            if (!animate || !visible || Math.abs(darkBlend - targetBlend) < 0.001f) {
+                darkBlend = targetBlend;
+                drawFrame();
+                return;
+            }
+            blendAnimator = ValueAnimator.ofFloat(darkBlend, targetBlend);
+            blendAnimator.setDuration(TRANSITION_DURATION_MS);
+            blendAnimator.setInterpolator(new DecelerateInterpolator());
+            blendAnimator.addUpdateListener(anim -> {
+                darkBlend = (float) anim.getAnimatedValue();
+                drawFrame();
+            });
+            blendAnimator.start();
         }
 
         void reloadBitmapsAsync() {
@@ -221,15 +282,29 @@ public class AutoDarkWallpaperService extends WallpaperService {
             final int reqH = surfaceHeight > 0 ? surfaceHeight : 1200;
             decodeExecutor.execute(() -> {
                 try {
-                    WallpaperController.ensureDefaultWallpapers(AutoDarkWallpaperService.this);
-                    final Bitmap newLight = WallpaperController.decodeSampledBitmap(
-                            WallpaperController.getLightWallpaperFile(AutoDarkWallpaperService.this), reqW, reqH);
-                    final Bitmap newDark = WallpaperController.decodeSampledBitmap(
-                            WallpaperController.getDarkWallpaperFile(AutoDarkWallpaperService.this), reqW, reqH);
+                    WallpaperRepository.WallpaperItem dayItem =
+                            WallpaperRepository.getActiveItem(AutoDarkWallpaperService.this, false);
+                    WallpaperRepository.WallpaperItem nightItem =
+                            WallpaperRepository.getActiveItem(AutoDarkWallpaperService.this, true);
+
+                    File dayFile = dayItem != null
+                            ? WallpaperRepository.getWallpaperFile(AutoDarkWallpaperService.this, false, dayItem.id)
+                            : null;
+                    File nightFile = nightItem != null
+                            ? WallpaperRepository.getWallpaperFile(AutoDarkWallpaperService.this, true, nightItem.id)
+                            : null;
+
+                    final Bitmap newLight = WallpaperController.decodeSampledBitmap(dayFile, reqW, reqH);
+                    final Bitmap newDark = WallpaperController.decodeSampledBitmap(nightFile, reqW, reqH);
+                    final String newLightId = dayItem != null ? dayItem.id : null;
+                    final String newDarkId = nightItem != null ? nightItem.id : null;
+
                     mainHandler.post(() -> {
                         recycleBitmaps();
                         lightBitmap = newLight;
                         darkBitmap = newDark;
+                        loadedLightId = newLightId;
+                        loadedDarkId = newDarkId;
                         drawFrame();
                     });
                 } catch (Throwable t) {
@@ -243,10 +318,12 @@ public class AutoDarkWallpaperService extends WallpaperService {
                 lightBitmap.recycle();
             }
             lightBitmap = null;
+            loadedLightId = null;
             if (darkBitmap != null && !darkBitmap.isRecycled()) {
                 darkBitmap.recycle();
             }
             darkBitmap = null;
+            loadedDarkId = null;
         }
 
         private void drawFrame() {
@@ -262,19 +339,31 @@ public class AutoDarkWallpaperService extends WallpaperService {
                 }
                 int w = canvas.getWidth();
                 int h = canvas.getHeight();
-                canvas.drawColor(darkBlend >= 0.5f ? Color.parseColor("#020617") : Color.parseColor("#0EA5E9"));
+                boolean showingDarkSide = darkBlend >= 0.5f;
+                canvas.drawColor(showingDarkSide ? Color.parseColor("#0D1117") : Color.parseColor("#EEF2F7"));
 
+                boolean drewAny = false;
                 if (lightBitmap != null && !lightBitmap.isRecycled() && darkBlend < 1f) {
                     bitmapPaint.setAlpha(255);
                     drawCenterCrop(canvas, lightBitmap, w, h, bitmapPaint);
+                    if (!showingDarkSide) {
+                        drewAny = true;
+                    }
                 }
                 if (darkBitmap != null && !darkBitmap.isRecycled() && darkBlend > 0f) {
                     int alpha = Math.max(0, Math.min(255, Math.round(darkBlend * 255f)));
                     bitmapPaint.setAlpha(alpha);
                     drawCenterCrop(canvas, darkBitmap, w, h, bitmapPaint);
+                    if (showingDarkSide) {
+                        drewAny = true;
+                    }
                 }
-                if (lightBitmap == null && darkBitmap == null) {
-                    canvas.drawText("正在加载壁纸...", 48f, h / 2f, errorTextPaint);
+
+                if (!drewAny) {
+                    hintPaint.setColor(showingDarkSide ? Color.parseColor("#9BA6B8") : Color.parseColor("#5B6577"));
+                    String msg = "请先在应用中添加" + (showingDarkSide ? "夜间" : "日间") + "壁纸";
+                    canvas.drawText(msg, w / 2f, h / 2f, hintPaint);
+                    AppLogger.w(TAG, "当前模式尚未添加壁纸，绘制提示占位画面: showingDarkSide=" + showingDarkSide);
                 }
             } catch (Throwable t) {
                 AppLogger.e(TAG, "Engine.drawFrame() 绘制异常", t);

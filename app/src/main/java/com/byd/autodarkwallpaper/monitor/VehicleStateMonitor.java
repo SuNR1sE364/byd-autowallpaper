@@ -119,6 +119,7 @@ public class VehicleStateMonitor {
     }
 
     private final Context appContext;
+    private final boolean bydHardwareEnabled;
     private final Object stateLock = new Object();
     private final TelemetrySnapshot snapshot = new TelemetrySnapshot();
 
@@ -133,7 +134,12 @@ public class VehicleStateMonitor {
     private BodyworkDeviceBridge bodyworkBridge;
 
     public VehicleStateMonitor(Context context) {
+        this(context, false);
+    }
+
+    public VehicleStateMonitor(Context context, boolean bydHardwareEnabled) {
         this.appContext = context.getApplicationContext();
+        this.bydHardwareEnabled = bydHardwareEnabled;
     }
 
     public void setOnStateChangedListener(OnStateChangedListener listener) {
@@ -233,13 +239,15 @@ public class VehicleStateMonitor {
             return;
         }
         started = true;
-        AppLogger.i(TAG, "正在启动车机状态与比亚迪硬件监听器...");
+        AppLogger.i(TAG, "正在启动状态监听器 (bydHardwareEnabled=" + bydHardwareEnabled + ")...");
 
-        checkAndLogBydPermissions(appContext);
         registerSystemUiModeListeners();
-        initLightDevice();
-        initSensorDevice();
-        initBodyworkDevice();
+        if (bydHardwareEnabled) {
+            checkAndLogBydPermissions(appContext);
+            initLightDevice();
+            initSensorDevice();
+            initBodyworkDevice();
+        }
 
         pollAllStatesNow();
     }
@@ -275,37 +283,39 @@ public class VehicleStateMonitor {
     }
 
     public synchronized void pollAllStatesNow() {
-        AppLogger.i(TAG, "开始主动轮询并检查所有信号源...");
+        AppLogger.i(TAG, "开始主动轮询并检查信号源...");
         readSystemUiMode(true);
 
-        boolean lightConnected;
-        boolean sensorConnected;
-        boolean bodyworkConnected;
-        synchronized (stateLock) {
-            lightConnected = snapshot.lightDeviceConnected;
-            sensorConnected = snapshot.sensorDeviceConnected;
-            bodyworkConnected = snapshot.bodyworkDeviceConnected;
-        }
+        if (bydHardwareEnabled) {
+            boolean lightConnected;
+            boolean sensorConnected;
+            boolean bodyworkConnected;
+            synchronized (stateLock) {
+                lightConnected = snapshot.lightDeviceConnected;
+                sensorConnected = snapshot.sensorDeviceConnected;
+                bodyworkConnected = snapshot.bodyworkDeviceConnected;
+            }
 
-        if (lightBridge == null || !lightConnected) {
-            releaseLightDevice();
-            initLightDevice();
-        } else {
-            lightBridge.poll(true);
-        }
+            if (lightBridge == null || !lightConnected) {
+                releaseLightDevice();
+                initLightDevice();
+            } else {
+                lightBridge.poll(true);
+            }
 
-        if (sensorBridge == null || !sensorConnected) {
-            releaseSensorDevice();
-            initSensorDevice();
-        } else {
-            sensorBridge.poll(true);
-        }
+            if (sensorBridge == null || !sensorConnected) {
+                releaseSensorDevice();
+                initSensorDevice();
+            } else {
+                sensorBridge.poll(true);
+            }
 
-        if (bodyworkBridge == null || !bodyworkConnected) {
-            releaseBodyworkDevice();
-            initBodyworkDevice();
-        } else {
-            bodyworkBridge.poll(true);
+            if (bodyworkBridge == null || !bodyworkConnected) {
+                releaseBodyworkDevice();
+                initBodyworkDevice();
+            } else {
+                bodyworkBridge.poll(true);
+            }
         }
 
         synchronized (stateLock) {
@@ -315,21 +325,23 @@ public class VehicleStateMonitor {
     }
 
     /**
-     * 后台轻量级定时轮询（仅对已连接硬件轮询，且仅在数值变化时打日志与通知，作为回调监听失效时的兜底同步）。
+     * 后台轻量级定时轮询（仅在数值变化时打日志与通知，作为回调监听失效时的兜底同步）。
      */
     public void pollConnectedHardwareQuietly() {
         if (!started) {
             return;
         }
         boolean anyChanged = readSystemUiMode(false);
-        if (lightBridge != null && lightBridge.isConnected()) {
-            anyChanged |= lightBridge.poll(false);
-        }
-        if (sensorBridge != null && sensorBridge.isConnected()) {
-            anyChanged |= sensorBridge.poll(false);
-        }
-        if (bodyworkBridge != null && bodyworkBridge.isConnected()) {
-            anyChanged |= bodyworkBridge.poll(false);
+        if (bydHardwareEnabled) {
+            if (lightBridge != null && lightBridge.isConnected()) {
+                anyChanged |= lightBridge.poll(false);
+            }
+            if (sensorBridge != null && sensorBridge.isConnected()) {
+                anyChanged |= sensorBridge.poll(false);
+            }
+            if (bodyworkBridge != null && bodyworkBridge.isConnected()) {
+                anyChanged |= bodyworkBridge.poll(false);
+            }
         }
         if (anyChanged) {
             synchronized (stateLock) {
@@ -537,6 +549,9 @@ public class VehicleStateMonitor {
      */
     public EvaluationResult evaluateTargetDarkState(AppPrefs prefs) {
         TelemetrySnapshot s = getSnapshot();
+        if (!bydHardwareEnabled) {
+            return evaluateSystemUiMode(s);
+        }
         int source = prefs.getActiveTriggerSource();
 
         switch (source) {

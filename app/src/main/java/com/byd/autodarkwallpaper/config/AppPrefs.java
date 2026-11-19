@@ -13,9 +13,13 @@ public final class AppPrefs {
     // 壁纸实现模式
     public static final int MODE_STATIC_MANAGER = 0;
     public static final int MODE_LIVE_SERVICE = 1;
-    public static final int MODE_DUAL = 2;
+    public static final int MODE_DUAL = 2; // 兼容历史配置值
 
-    // 触发源模式
+    // 壁纸选取策略
+    public static final int SELECT_FIXED = 0;
+    public static final int SELECT_RANDOM = 1;
+
+    // 触发源模式（保留底层字段，日常版本仅启用 TRIGGER_SYSTEM_UIMODE）
     public static final int TRIGGER_SYSTEM_UIMODE = 0;
     public static final int TRIGGER_BYD_LIGHT = 1;
     public static final int TRIGGER_BYD_SENSOR = 2;
@@ -28,6 +32,17 @@ public final class AppPrefs {
 
     private static final String KEY_ENABLED = "enabled";
     private static final String KEY_WALLPAPER_MODE = "wallpaper_mode";
+    private static final String KEY_DEBUG_MODE = "debug_mode_enabled";
+    private static final String KEY_DAY_SELECTION_MODE = "day_selection_mode";
+    private static final String KEY_NIGHT_SELECTION_MODE = "night_selection_mode";
+    private static final String KEY_DAY_SELECTED_ID = "day_selected_wallpaper_id";
+    private static final String KEY_NIGHT_SELECTED_ID = "night_selected_wallpaper_id";
+    private static final String KEY_DAY_ACTIVE_ID = "day_active_wallpaper_id";
+    private static final String KEY_NIGHT_ACTIVE_ID = "night_active_wallpaper_id";
+    private static final String KEY_HAS_ORIGINAL_BACKUP = "has_original_wallpaper_backup";
+    private static final String KEY_ORIGINAL_BACKUP_META = "original_wallpaper_backup_meta";
+
+    // 底层硬件及高级策略字段（保留兼容）
     private static final String KEY_ACTIVE_TRIGGER_SOURCE = "active_trigger_source";
     private static final String KEY_LIGHT_USE_SIDE = "light_use_side";
     private static final String KEY_LIGHT_USE_LOW_BEAM = "light_use_low_beam";
@@ -50,7 +65,7 @@ public final class AppPrefs {
     }
 
     public boolean isEnabled() {
-        return prefs.getBoolean(KEY_ENABLED, true);
+        return prefs.getBoolean(KEY_ENABLED, false);
     }
 
     public void setEnabled(boolean enabled) {
@@ -58,11 +73,86 @@ public final class AppPrefs {
     }
 
     public int getWallpaperMode() {
-        return prefs.getInt(KEY_WALLPAPER_MODE, MODE_DUAL);
+        int mode = prefs.getInt(KEY_WALLPAPER_MODE, MODE_STATIC_MANAGER);
+        if (mode != MODE_STATIC_MANAGER && mode != MODE_LIVE_SERVICE) {
+            return MODE_STATIC_MANAGER;
+        }
+        return mode;
     }
 
     public void setWallpaperMode(int mode) {
+        if (mode != MODE_STATIC_MANAGER && mode != MODE_LIVE_SERVICE) {
+            mode = MODE_STATIC_MANAGER;
+        }
         prefs.edit().putInt(KEY_WALLPAPER_MODE, mode).apply();
+    }
+
+    public boolean isDebugModeEnabled() {
+        return prefs.getBoolean(KEY_DEBUG_MODE, false);
+    }
+
+    public void setDebugModeEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_DEBUG_MODE, enabled).apply();
+    }
+
+    public int getSelectionMode(boolean isDark) {
+        String key = isDark ? KEY_NIGHT_SELECTION_MODE : KEY_DAY_SELECTION_MODE;
+        int mode = prefs.getInt(key, SELECT_FIXED);
+        return (mode == SELECT_RANDOM) ? SELECT_RANDOM : SELECT_FIXED;
+    }
+
+    public void setSelectionMode(boolean isDark, int mode) {
+        String key = isDark ? KEY_NIGHT_SELECTION_MODE : KEY_DAY_SELECTION_MODE;
+        int normalized = (mode == SELECT_RANDOM) ? SELECT_RANDOM : SELECT_FIXED;
+        prefs.edit().putInt(key, normalized).apply();
+    }
+
+    public String getSelectedWallpaperId(boolean isDark) {
+        String key = isDark ? KEY_NIGHT_SELECTED_ID : KEY_DAY_SELECTED_ID;
+        return prefs.getString(key, null);
+    }
+
+    public void setSelectedWallpaperId(boolean isDark, String id) {
+        String key = isDark ? KEY_NIGHT_SELECTED_ID : KEY_DAY_SELECTED_ID;
+        if (id == null || id.trim().isEmpty()) {
+            prefs.edit().remove(key).apply();
+        } else {
+            prefs.edit().putString(key, id.trim()).apply();
+        }
+    }
+
+    public String getActiveWallpaperId(boolean isDark) {
+        String key = isDark ? KEY_NIGHT_ACTIVE_ID : KEY_DAY_ACTIVE_ID;
+        return prefs.getString(key, null);
+    }
+
+    public void setActiveWallpaperId(boolean isDark, String id) {
+        String key = isDark ? KEY_NIGHT_ACTIVE_ID : KEY_DAY_ACTIVE_ID;
+        if (id == null || id.trim().isEmpty()) {
+            prefs.edit().remove(key).apply();
+        } else {
+            prefs.edit().putString(key, id.trim()).apply();
+        }
+    }
+
+    public boolean hasOriginalBackup() {
+        return prefs.getBoolean(KEY_HAS_ORIGINAL_BACKUP, false);
+    }
+
+    public void setHasOriginalBackup(boolean hasBackup) {
+        prefs.edit().putBoolean(KEY_HAS_ORIGINAL_BACKUP, hasBackup).apply();
+    }
+
+    public String getOriginalBackupMeta() {
+        return prefs.getString(KEY_ORIGINAL_BACKUP_META, null);
+    }
+
+    public void setOriginalBackupMeta(String meta) {
+        if (meta == null || meta.trim().isEmpty()) {
+            prefs.edit().remove(KEY_ORIGINAL_BACKUP_META).apply();
+        } else {
+            prefs.edit().putString(KEY_ORIGINAL_BACKUP_META, meta.trim()).apply();
+        }
     }
 
     public int getActiveTriggerSource() {
@@ -114,7 +204,7 @@ public final class AppPrefs {
     }
 
     public long getDebounceMs() {
-        return prefs.getLong(KEY_DEBOUNCE_MS, 1500L);
+        return prefs.getLong(KEY_DEBOUNCE_MS, 0L);
     }
 
     public void setDebounceMs(long debounceMs) {
@@ -189,26 +279,24 @@ public final class AppPrefs {
     public static String formatWallpaperMode(int mode) {
         switch (mode) {
             case MODE_STATIC_MANAGER:
-                return "仅静态壁纸(WallpaperManager)";
+                return "直接修改壁纸";
             case MODE_LIVE_SERVICE:
-                return "仅动态壁纸(WallpaperService)";
-            case MODE_DUAL:
-                return "双模式同时生效";
+                return "动态壁纸模式";
             default:
-                return "未知模式(" + mode + ")";
+                return "直接修改壁纸";
         }
     }
 
     public static String formatTriggerSource(int source) {
         switch (source) {
             case TRIGGER_SYSTEM_UIMODE:
-                return "系统深浅色(uiMode)";
+                return "系统深浅色模式";
             case TRIGGER_BYD_LIGHT:
                 return "比亚迪车灯(BYDAutoLightDevice)";
             case TRIGGER_BYD_SENSOR:
                 return "比亚迪光感(BYDAutoSensorDevice)";
             case TRIGGER_ANY_DARK:
-                return "多源联合触发(任一暗色即切)";
+                return "多源联合触发";
             default:
                 return "未知触发源(" + source + ")";
         }

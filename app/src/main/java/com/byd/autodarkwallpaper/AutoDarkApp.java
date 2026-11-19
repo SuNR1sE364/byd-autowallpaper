@@ -4,10 +4,10 @@ import android.app.Application;
 import android.os.Build;
 
 import com.byd.autodarkwallpaper.util.AppLogger;
-import com.byd.autodarkwallpaper.wallpaper.WallpaperController;
+import com.byd.autodarkwallpaper.wallpaper.WallpaperRepository;
 
 /**
- * 应用入口：初始化诊断日志并确保内置日间/夜间测试壁纸就绪。
+ * 应用入口：初始化日志并迁移历史自定义壁纸（若有）。
  */
 public class AutoDarkApp extends Application {
 
@@ -21,9 +21,9 @@ public class AutoDarkApp extends Application {
                 + " | Android " + Build.VERSION.RELEASE + " (SDK " + Build.VERSION.SDK_INT + ")"
                 + " | Build=" + Build.DISPLAY);
         try {
-            WallpaperController.ensureDefaultWallpapers(this);
+            WallpaperRepository.migrateLegacyCustomWallpapersIfNeeded(this);
         } catch (Throwable t) {
-            AppLogger.e(TAG, "启动时初始化内置测试壁纸失败", t);
+            AppLogger.e(TAG, "迁移历史壁纸库失败", t);
         }
     }
 }

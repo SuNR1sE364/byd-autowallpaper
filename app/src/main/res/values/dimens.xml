@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="sidebar_width">156dp</dimen>
+    <dimen name="page_padding">20dp</dimen>
+    <dimen name="card_padding">20dp</dimen>
+    <integer name="wallpaper_grid_columns">2</integer>
+</resources>
