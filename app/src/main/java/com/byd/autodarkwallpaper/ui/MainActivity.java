@@ -12,6 +12,7 @@ import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.database.ContentObserver;
 import android.graphics.Bitmap;
 import android.graphics.Outline;
 import android.graphics.Typeface;
@@ -19,6 +20,8 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.text.InputType;
 import android.view.View;
@@ -39,6 +42,7 @@ import com.byd.autodarkwallpaper.monitor.VehicleStateMonitor;
 import com.byd.autodarkwallpaper.service.AutoDarkMonitorService;
 import com.byd.autodarkwallpaper.service.AutoDarkWallpaperService;
 import com.byd.autodarkwallpaper.util.AppLogger;
+import com.byd.autodarkwallpaper.util.DayNightProbeHelper;
 import com.byd.autodarkwallpaper.wallpaper.WallpaperController;
 import com.byd.autodarkwallpaper.wallpaper.WallpaperRepository;
 
@@ -143,6 +147,11 @@ public class MainActivity extends Activity {
     private TextView tvAboutDeviceInfo;
     private Switch switchDebugMode;
     private View cardDebugConsole;
+    private TextView tvProbeStatus;
+    private Button btnProbeSnapA;
+    private Button btnProbeSnapB;
+    private Button btnProbeSnapC;
+    private Button btnProbeLiveToggle;
     private TextView tvLogFilePath;
     private Button btnSetLogPath;
     private Button btnCopyLogs;
@@ -150,6 +159,18 @@ public class MainActivity extends Activity {
     private Button btnClearLogs;
     private ScrollView scrollLog;
     private TextView tvLogConsole;
+
+    private DayNightProbeHelper probeHelper;
+    private volatile boolean probeBusy = false;
+    private static volatile DayNightProbeHelper.ProbeSnapshot probeSnapA;
+    private static volatile DayNightProbeHelper.ProbeSnapshot probeSnapB;
+    private static volatile DayNightProbeHelper.ProbeSnapshot probeSnapC;
+    private static volatile DayNightProbeHelper.ProbeSnapshot lastProbeSnap;
+
+    private final Handler uiHandler = new Handler(Looper.getMainLooper());
+    private Boolean appliedUiDarkMode = null;
+    private ContentObserver bydUiThemeObserver;
+    private ContentObserver bydCarSettingsUiObserver;
 
     private final AppLogger.LogListener logListener = fullLogText -> {
         if (tvLogConsole == null) {
@@ -174,11 +195,28 @@ public class MainActivity extends Activity {
             };
 
     @Override
+    protected void attachBaseContext(Context newBase) {
+        super.attachBaseContext(newBase);
+        Boolean bydDark = VehicleStateMonitor.queryBydDarkStateOrNull(newBase);
+        if (bydDark != null) {
+            Configuration baseConfig = newBase.getResources().getConfiguration();
+            Configuration overrideConfig = new Configuration();
+            overrideConfig.uiMode = (baseConfig.uiMode & ~Configuration.UI_MODE_NIGHT_MASK)
+                    | (bydDark ? Configuration.UI_MODE_NIGHT_YES : Configuration.UI_MODE_NIGHT_NO);
+            applyOverrideConfiguration(overrideConfig);
+            appliedUiDarkMode = bydDark;
+        } else {
+            appliedUiDarkMode = null;
+        }
+    }
+
+    @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         AppLogger.init(this);
         setContentView(R.layout.activity_main);
         prefs = new AppPrefs(this);
+        probeHelper = new DayNightProbeHelper(this);
 
         if (savedInstanceState != null) {
             currentTab = savedInstanceState.getInt(STATE_TAB, TAB_HOME);
@@ -213,12 +251,16 @@ public class MainActivity extends Activity {
         super.onStart();
         AutoDarkMonitorService.addObserver(monitorObserver);
         WallpaperController.addApplyStatusListener(applyStatusListener);
+        registerBydUiThemeObserver();
         syncDebugConsoleState();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        if (syncThemeWithBydNightModeIfNeeded()) {
+            return;
+        }
         renderHomeStatus();
         refreshHomeWallpaperOverviewAsync();
         if (currentTab == TAB_WALLPAPER) {
@@ -229,14 +271,91 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onStop() {
+        unregisterBydUiThemeObserver();
         WallpaperController.removeApplyStatusListener(applyStatusListener);
         AutoDarkMonitorService.removeObserver(monitorObserver);
         unregisterLogListenerIfNeeded();
         super.onStop();
     }
 
+    private void registerBydUiThemeObserver() {
+        if (bydUiThemeObserver == null) {
+            bydUiThemeObserver = new ContentObserver(uiHandler) {
+                @Override
+                public void onChange(boolean selfChange) {
+                    onChange(selfChange, null);
+                }
+
+                @Override
+                public void onChange(boolean selfChange, Uri uri) {
+                    if (!syncThemeWithBydNightModeIfNeeded()) {
+                        renderHomeStatus();
+                    }
+                }
+            };
+            try {
+                getContentResolver().registerContentObserver(
+                        Settings.Global.getUriFor(VehicleStateMonitor.SETTINGS_GLOBAL_BYD_NIGHT_MODE),
+                        false,
+                        bydUiThemeObserver);
+            } catch (Throwable t) {
+                AppLogger.e(TAG, "MainActivity 注册 key_byd_night_mode 主题监听失败", t);
+                bydUiThemeObserver = null;
+            }
+        }
+        if (bydCarSettingsUiObserver == null) {
+            bydCarSettingsUiObserver = new ContentObserver(uiHandler) {
+                @Override
+                public void onChange(boolean selfChange) {
+                    renderHomeStatus();
+                }
+            };
+            try {
+                getContentResolver().registerContentObserver(
+                        VehicleStateMonitor.CARSETTINGS_GLOBAL_URI,
+                        true,
+                        bydCarSettingsUiObserver);
+            } catch (Throwable t) {
+                AppLogger.w(TAG, "MainActivity 注册 carsettings 档位监听失败: " + t.getMessage());
+                bydCarSettingsUiObserver = null;
+            }
+        }
+    }
+
+    private void unregisterBydUiThemeObserver() {
+        if (bydUiThemeObserver != null) {
+            try {
+                getContentResolver().unregisterContentObserver(bydUiThemeObserver);
+            } catch (Throwable t) {
+                AppLogger.e(TAG, "MainActivity 注销 key_byd_night_mode 主题监听失败", t);
+            }
+            bydUiThemeObserver = null;
+        }
+        if (bydCarSettingsUiObserver != null) {
+            try {
+                getContentResolver().unregisterContentObserver(bydCarSettingsUiObserver);
+            } catch (Throwable t) {
+                AppLogger.e(TAG, "MainActivity 注销 carsettings 档位监听失败", t);
+            }
+            bydCarSettingsUiObserver = null;
+        }
+    }
+
+    private boolean syncThemeWithBydNightModeIfNeeded() {
+        Boolean latestDark = VehicleStateMonitor.queryBydDarkStateOrNull(this);
+        if (latestDark != null && !latestDark.equals(appliedUiDarkMode) && !isFinishing() && !isDestroyed()) {
+            AppLogger.i(TAG, "检测到比亚迪日夜模式变化 (" + appliedUiDarkMode + " -> " + latestDark + ")，重建界面以同步浅色/深色主题");
+            recreate();
+            return true;
+        }
+        return false;
+    }
+
     @Override
     protected void onDestroy() {
+        if (probeHelper != null) {
+            probeHelper.stopLiveWatch();
+        }
         if (gridAdapter != null) {
             gridAdapter.release();
         }
@@ -317,6 +436,11 @@ public class MainActivity extends Activity {
         tvAboutDeviceInfo = findViewById(R.id.tvAboutDeviceInfo);
         switchDebugMode = findViewById(R.id.switchDebugMode);
         cardDebugConsole = findViewById(R.id.cardDebugConsole);
+        tvProbeStatus = findViewById(R.id.tvProbeStatus);
+        btnProbeSnapA = findViewById(R.id.btnProbeSnapA);
+        btnProbeSnapB = findViewById(R.id.btnProbeSnapB);
+        btnProbeSnapC = findViewById(R.id.btnProbeSnapC);
+        btnProbeLiveToggle = findViewById(R.id.btnProbeLiveToggle);
         tvLogFilePath = findViewById(R.id.tvLogFilePath);
         btnSetLogPath = findViewById(R.id.btnSetLogPath);
         btnCopyLogs = findViewById(R.id.btnCopyLogs);
@@ -395,6 +519,11 @@ public class MainActivity extends Activity {
             syncDebugConsoleState();
         });
 
+        btnProbeSnapA.setOnClickListener(v -> triggerProbeSnapshot('A'));
+        btnProbeSnapB.setOnClickListener(v -> triggerProbeSnapshot('B'));
+        btnProbeSnapC.setOnClickListener(v -> triggerProbeSnapshot('C'));
+        btnProbeLiveToggle.setOnClickListener(v -> toggleProbeLiveWatch());
+
         btnSetLogPath.setOnClickListener(v -> showLogPathConfigDialog());
         tvLogFilePath.setOnClickListener(v -> showLogPathConfigDialog());
 
@@ -459,14 +588,27 @@ public class MainActivity extends Activity {
     }
 
     private boolean isSystemNightNow() {
-        int mask = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
-        return mask == Configuration.UI_MODE_NIGHT_YES;
+        Boolean bydDark = VehicleStateMonitor.queryBydDarkStateOrNull(this);
+        return Boolean.TRUE.equals(bydDark);
     }
 
     private void renderHomeStatus() {
-        boolean systemDark = isSystemNightNow();
-        ivSystemModeIcon.setImageResource(systemDark ? R.drawable.ic_moon : R.drawable.ic_sun);
-        tvSystemModePill.setText(systemDark ? "当前：夜间模式" : "当前：日间模式");
+        VehicleStateMonitor.BydDayNightReading bydReading = VehicleStateMonitor.readBydNightModeNow(this);
+        boolean modeValid = bydReading.isValid();
+        boolean systemDark = bydReading.isDark();
+        String modeHint = VehicleStateMonitor.formatBydWallpaperModeShort(bydReading.wallpaperModeCode);
+
+        if (modeValid) {
+            ivSystemModeIcon.setImageResource(systemDark ? R.drawable.ic_moon : R.drawable.ic_sun);
+            String pillText = "当前：" + (systemDark ? "夜间模式" : "日间模式");
+            if (modeHint != null) {
+                pillText += " · " + modeHint;
+            }
+            tvSystemModePill.setText(pillText);
+        } else {
+            ivSystemModeIcon.setImageResource(R.drawable.ic_sun);
+            tvSystemModePill.setText("模式未知 (未检测到 BYD 信号)");
+        }
 
         boolean enabled = prefs.isEnabled();
         boolean running = AutoDarkMonitorService.isRunning();
@@ -480,7 +622,15 @@ public class MainActivity extends Activity {
         }
 
         if (enabled && running) {
-            tvMasterStatusDesc.setText("已开启 · 正在跟随车机系统" + (systemDark ? "夜间" : "日间") + "模式运行");
+            if (modeValid) {
+                tvMasterStatusDesc.setText("已开启 · 正在跟随车机" + (systemDark ? "夜间" : "日间") + "模式运行");
+                viewSidebarStatusDot.getBackground().setTint(getColor(R.color.status_success));
+                tvSidebarStatus.setText("运行中 · " + (systemDark ? "夜间" : "日间"));
+            } else {
+                tvMasterStatusDesc.setText("已开启 · 比亚迪日夜信号读取异常（请查看调试日志）");
+                viewSidebarStatusDot.getBackground().setTint(getColor(R.color.status_warning));
+                tvSidebarStatus.setText("信号异常");
+            }
             if (mode == AppPrefs.MODE_STATIC_MANAGER) {
                 if (prefs.hasOriginalBackup()) {
                     String meta = prefs.getOriginalBackupMeta();
@@ -492,8 +642,6 @@ public class MainActivity extends Activity {
             } else {
                 tvMasterSubHint.setText("动态壁纸模式 · " + lastApplyStatusText);
             }
-            viewSidebarStatusDot.getBackground().setTint(getColor(R.color.status_success));
-            tvSidebarStatus.setText("运行中 · " + (systemDark ? "夜间" : "日间"));
         } else if (enabled) {
             tvMasterStatusDesc.setText("已开启 · 正在启动后台监听服务...");
             tvMasterSubHint.setText(lastApplyStatusText);
@@ -1053,10 +1201,121 @@ public class MainActivity extends Activity {
         cardDebugConsole.setVisibility(debugEnabled ? View.VISIBLE : View.GONE);
         if (debugEnabled) {
             refreshLogLocationText();
+            refreshProbeStatusUi();
             registerLogListenerIfNeeded();
         } else {
+            if (probeHelper != null) {
+                probeHelper.stopLiveWatch();
+            }
+            refreshProbeStatusUi();
             unregisterLogListenerIfNeeded();
         }
+    }
+
+    private void refreshProbeStatusUi() {
+        if (tvProbeStatus == null || btnProbeLiveToggle == null) {
+            return;
+        }
+        String aText = (probeSnapA != null) ? probeSnapA.capturedTimeText : "未抓取";
+        String bText = (probeSnapB != null) ? probeSnapB.capturedTimeText : "未抓取";
+        String cText = (probeSnapC != null) ? probeSnapC.capturedTimeText : "未抓取";
+        boolean watching = (probeHelper != null && probeHelper.isLiveWatching());
+        tvProbeStatus.setText("快照 A：" + aText
+                + "  |  快照 B：" + bText
+                + "  |  快照 C：" + cText
+                + "  |  实时监听：" + (watching ? "运行中" : "关"));
+        btnProbeLiveToggle.setText(watching ? "停止实时监听" : "开启实时监听");
+        btnProbeSnapA.setEnabled(!probeBusy);
+        btnProbeSnapB.setEnabled(!probeBusy);
+        btnProbeSnapC.setEnabled(!probeBusy);
+    }
+
+    private void toggleProbeLiveWatch() {
+        if (probeHelper == null) {
+            return;
+        }
+        if (probeHelper.isLiveWatching()) {
+            probeHelper.stopLiveWatch();
+            Toast.makeText(this, "已停止实时变动监听", Toast.LENGTH_SHORT).show();
+        } else {
+            probeHelper.startLiveWatch();
+            Toast.makeText(this, "已开启实时监听，请切换车机日/夜模式观察日志", Toast.LENGTH_LONG).show();
+        }
+        refreshProbeStatusUi();
+    }
+
+    private void triggerProbeSnapshot(final char slot) {
+        if (probeHelper == null) {
+            return;
+        }
+        if (probeBusy) {
+            Toast.makeText(this, "正在抓取快照，请稍候...", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        probeBusy = true;
+        refreshProbeStatusUi();
+
+        final String label;
+        final boolean includeHighlights;
+        if (slot == 'A') {
+            label = "快照A-日间";
+            includeHighlights = true;
+        } else if (slot == 'B') {
+            label = "快照B-夜间";
+            includeHighlights = (probeSnapA == null);
+        } else {
+            label = "快照C-自动";
+            includeHighlights = (probeSnapA == null && probeSnapB == null);
+        }
+        Toast.makeText(this, "正在扫描系统设置与属性 (" + label + ")...", Toast.LENGTH_SHORT).show();
+
+        ioExecutor.execute(() -> {
+            try {
+                DayNightProbeHelper.ProbeSnapshot prevSnap = lastProbeSnap;
+                DayNightProbeHelper.ProbeSnapshot current = probeHelper.captureSnapshot(label, includeHighlights);
+                String summaryMsg = label + " 抓取完成";
+
+                if (slot == 'A') {
+                    probeSnapA = current;
+                    if (probeSnapB != null) {
+                        summaryMsg = probeHelper.diffAndLog(probeSnapB, current);
+                    }
+                } else if (slot == 'B') {
+                    probeSnapB = current;
+                    if (probeSnapA != null) {
+                        summaryMsg = probeHelper.diffAndLog(probeSnapA, current);
+                    } else if (prevSnap != null) {
+                        summaryMsg = probeHelper.diffAndLog(prevSnap, current);
+                    }
+                } else {
+                    probeSnapC = current;
+                    if (probeSnapA != null) {
+                        summaryMsg = "A->C: " + probeHelper.diffAndLog(probeSnapA, current);
+                    }
+                    if (probeSnapB != null) {
+                        String bc = probeHelper.diffAndLog(probeSnapB, current);
+                        summaryMsg = (probeSnapA != null) ? (summaryMsg + " | B->C: " + bc) : ("B->C: " + bc);
+                    } else if (probeSnapA == null && prevSnap != null) {
+                        summaryMsg = probeHelper.diffAndLog(prevSnap, current);
+                    }
+                }
+                lastProbeSnap = current;
+
+                final String finalToast = summaryMsg;
+                runOnUiThread(() -> {
+                    probeBusy = false;
+                    refreshProbeStatusUi();
+                    Toast.makeText(MainActivity.this, finalToast, Toast.LENGTH_LONG).show();
+                });
+            } catch (Throwable t) {
+                AppLogger.e(TAG, "抓取日/夜模式探测快照失败 (" + label + ")", t);
+                runOnUiThread(() -> {
+                    probeBusy = false;
+                    refreshProbeStatusUi();
+                    Toast.makeText(MainActivity.this, "探测失败: " + t.getMessage(), Toast.LENGTH_LONG).show();
+                });
+            }
+        });
     }
 
     private void registerLogListenerIfNeeded() {

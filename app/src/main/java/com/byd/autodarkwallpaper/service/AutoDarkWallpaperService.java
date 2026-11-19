@@ -19,6 +19,7 @@ import android.view.SurfaceHolder;
 import android.view.animation.DecelerateInterpolator;
 
 import com.byd.autodarkwallpaper.config.AppPrefs;
+import com.byd.autodarkwallpaper.monitor.VehicleStateMonitor;
 import com.byd.autodarkwallpaper.util.AppLogger;
 import com.byd.autodarkwallpaper.wallpaper.WallpaperController;
 import com.byd.autodarkwallpaper.wallpaper.WallpaperRepository;
@@ -161,6 +162,10 @@ public class AutoDarkWallpaperService extends WallpaperService {
         }
 
         private boolean resolveInitialDarkState() {
+            Boolean bydDark = VehicleStateMonitor.queryBydDarkStateOrNull(AutoDarkWallpaperService.this);
+            if (bydDark != null) {
+                return bydDark;
+            }
             AppPrefs prefs = new AppPrefs(AutoDarkWallpaperService.this);
             int saved = prefs.getCurrentTargetState();
             if (saved == AppPrefs.TARGET_STATE_DARK) {
@@ -169,8 +174,8 @@ public class AutoDarkWallpaperService extends WallpaperService {
             if (saved == AppPrefs.TARGET_STATE_LIGHT) {
                 return false;
             }
-            int mask = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
-            return mask == Configuration.UI_MODE_NIGHT_YES;
+            AppLogger.w(TAG, "动态壁纸初始化无法读取 key_byd_night_mode 且无历史状态，默认先按日间(false)渲染");
+            return false;
         }
 
         private void registerStateReceiver() {

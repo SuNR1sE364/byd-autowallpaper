@@ -41,7 +41,7 @@ public final class AppLogger {
     private static final String LOGCAT_PREFIX = "BYDAutoDark";
     private static final String DEFAULT_PUBLIC_SUBDIR = "BYDAutoDarkLogs";
     private static final String LOG_FILE_NAME = "autodark_debug.log";
-    private static final int MAX_BUFFER_LINES = 500;
+    private static final int MAX_BUFFER_LINES = 2500;
 
     private static final Object BUFFER_LOCK = new Object();
     private static final ArrayDeque<String> LOG_LINES = new ArrayDeque<>(MAX_BUFFER_LINES);

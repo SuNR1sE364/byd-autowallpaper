@@ -100,7 +100,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="跟随车机系统深浅色模式"
+                    android:text="跟随比亚迪车机日夜模式 (Settings.Global.key_byd_night_mode)"
                     android:textColor="@color/text_primary"
                     android:textSize="13sp" />
             </LinearLayout>
@@ -195,7 +195,7 @@
                 android:track="@drawable/switch_track" />
         </LinearLayout>
 
-        <!-- 卡片 3：调试日志控制台（仅在开启调试模式时显示） -->
+        <!-- 卡片 3：调试日志控制台与日夜模式探测器（仅在开启调试模式时显示） -->
         <LinearLayout
             android:id="@+id/cardDebugConsole"
             android:layout_width="match_parent"
@@ -204,6 +204,96 @@
             android:orientation="vertical"
             android:padding="@dimen/card_padding"
             android:visibility="gone">
+
+            <!-- 车机日/夜模式信号探测区 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="车机日/夜模式信号探测"
+                android:textColor="@color/text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="1) 切车机到「日间/浅色」点【快照 A】；2) 切到「夜间/深色」点【快照 B】自动比对 Diff；3) 切到「自动」点【快照 C】；也可开启【实时监听】后直接下拉切换深浅或开关大灯。完成后点击下方【导出文件】即可。"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/tvProbeStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="10dp"
+                android:text="快照 A：未抓取  |  快照 B：未抓取  |  快照 C：未抓取  |  实时监听：关"
+                android:textColor="@color/text_muted"
+                android:textSize="12sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnProbeSnapA"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_marginEnd="8dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_btn_native_primary"
+                    android:paddingHorizontal="8dp"
+                    android:text="快照 A (日间)"
+                    android:textAllCaps="false"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/btnProbeSnapB"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_marginEnd="8dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_btn_native_primary"
+                    android:paddingHorizontal="8dp"
+                    android:text="快照 B (夜间)比对"
+                    android:textAllCaps="false"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/btnProbeSnapC"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_marginEnd="8dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_btn_native_secondary"
+                    android:paddingHorizontal="8dp"
+                    android:text="快照 C (自动)比对"
+                    android:textAllCaps="false"
+                    android:textColor="@color/text_primary"
+                    android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/btnProbeLiveToggle"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_btn_native_secondary"
+                    android:paddingHorizontal="8dp"
+                    android:text="开启实时监听"
+                    android:textAllCaps="false"
+                    android:textColor="@color/text_primary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginVertical="16dp"
+                android:background="@color/divider" />
 
             <LinearLayout
                 android:layout_width="match_parent"

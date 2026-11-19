@@ -25,10 +25,14 @@
 
 ### 3. 关于：应用信息与调试模式
 - 展示应用版本、触发方式、切换模式与当前车机运行环境信息。
-- **调试模式开关**（默认关闭）：开启后在该页面下方显示实时运行日志控制台，支持设置日志保存位置、绑定 SAF 目录（支持 U 盘）、导出日志文件、复制全部日志及清空日志。
+- **调试模式开关**（默认关闭）：开启后在该页面下方显示：
+  - **车机日/夜模式信号探测**：支持抓取「快照 A (日间)」「快照 B (夜间)」「快照 C (自动)」并自动输出全量 Diff（覆盖 `Configuration.uiMode`、`UiModeManager`、`content://carsettings/*`、`Settings.Global/System/Secure`、`getprop`、`Sensor.TYPE_LIGHT` 与车机相关 `ContentProvider` 枚举），并支持开启 `ContentObserver` + 候选广播的**实时变动监听**。
+  - **实时运行日志控制台**：支持设置日志保存位置、绑定 SAF 目录（支持 U 盘）、导出日志文件、复制全部日志及清空日志。
 
 ### 4. 触发源说明
-- 由于比亚迪车灯（`BYDAutoLightDevice`）、环境光感（`BYDAutoSensorDevice`）等硬件接口需系统签名权限才可查询，当前日常版本仅启用 **跟随系统深浅色模式（`Configuration.uiMode`）**。
+- 实车测试（Di150VCP / Android 14 / Theme 7.0.0）证实比亚迪车机默认 `support_change_system_uimode = 0`，不会同步修改标准 Android 的 `Configuration.uiMode`（恒为 `0x23 / NIGHT_YES`）。
+- 当前版本直接通过标准 `ContentObserver` + 后台轻量轮询监听比亚迪真实的系统日夜键 **`Settings.Global.key_byd_night_mode`**（`1` = 夜间/深色，`2` = 日间/浅色；在自动模式下也会实时更新），同时读取 `content://carsettings/global` 中的 **`time_wallpaper_mode`**（`1` = 手动夜间，`2` = 手动日间，`3` = 自动）作为档位状态提示，**无需系统签名权限**。
+- App 自身界面亦同步跟随 `key_byd_night_mode` 切换浅色/深色原生车机主题。
 - 原有的 `BYDAuto*` 硬件监听与权限自检底层代码已保留在 `VehicleStateMonitor` 中，日常运行默认不初始化、不轮询，也不主动申请任何 `BYDAUTO_*` 权限。
 
 ---
@@ -52,7 +56,8 @@ byd-autodarkmode/
             ├── AutoDarkApp.java                     # 应用入口与旧版自定义壁纸迁移
             ├── config/AppPrefs.java                 # SharedPreferences 配置项管理
             ├── util/AppLogger.java                  # 内存缓冲与本地持久化日志工具
-            ├── monitor/VehicleStateMonitor.java     # 系统 uiMode 监听（保留 BYD 硬件底层代码）
+            ├── util/DayNightProbeHelper.java        # 车机日/夜模式底层信号快照 Diff 与实时监听探测工具
+            ├── monitor/VehicleStateMonitor.java     # 比亚迪 key_byd_night_mode / time_wallpaper_mode 实时监听（保留 BYD 硬件底层代码）
             ├── wallpaper/WallpaperRepository.java   # 多壁纸库存储、随机抽取、原壁纸备份与复原
             ├── wallpaper/WallpaperController.java   # 直接修改壁纸与动态壁纸调度控制器
             ├── service/AutoDarkWallpaperService.java# 动态壁纸 Engine（400ms 渐变过渡）
