@@ -1,7 +1,6 @@
 package com.byd.autodarkwallpaper.util;
 
 import android.content.Context;
-import android.hardware.bydauto.BYDAutoConstants;
 import android.net.Uri;
 import android.os.Environment;
 import android.os.Handler;
@@ -341,26 +340,6 @@ public final class AppLogger {
                 writer.write(snapshot);
                 writer.flush();
             }
-        }
-    }
-
-    /**
-     * 将比亚迪 SDK 返回码格式化为可读名称与原始十进制/十六进制值。
-     */
-    public static String formatBydReturnCode(int code) {
-        switch (code) {
-            case BYDAutoConstants.BYDAUTO_COMMAND_RESULT_SUCCESS:
-                return "0 (SUCCESS)";
-            case BYDAutoConstants.BYDAUTO_COMMAND_RESULT_FAILED:
-                return code + " (0x" + Integer.toHexString(code) + " / FAILED)";
-            case BYDAutoConstants.BYDAUTO_COMMAND_RESULT_BUSY:
-                return code + " (0x" + Integer.toHexString(code) + " / BUSY)";
-            case BYDAutoConstants.BYDAUTO_COMMAND_RESULT_TIMEOUT:
-                return code + " (0x" + Integer.toHexString(code) + " / TIMEOUT)";
-            case BYDAutoConstants.BYDAUTO_COMMAND_RESULT_INVALID_VALUE:
-                return code + " (0x" + Integer.toHexString(code) + " / INVALID_VALUE)";
-            default:
-                return code + " (0x" + Integer.toHexString(code) + ")";
         }
     }
 

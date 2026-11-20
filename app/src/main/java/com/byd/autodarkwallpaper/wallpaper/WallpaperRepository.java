@@ -311,17 +311,6 @@ public final class WallpaperRepository {
         return true;
     }
 
-    public static synchronized WallpaperItem getSelectedItem(Context context, boolean isDark) {
-        Context appCtx = context.getApplicationContext();
-        List<WallpaperItem> items = listWallpapers(appCtx, isDark);
-        if (items.isEmpty()) {
-            return null;
-        }
-        AppPrefs prefs = new AppPrefs(appCtx);
-        WallpaperItem found = findById(items, prefs.getSelectedWallpaperId(isDark));
-        return found != null ? found : items.get(0);
-    }
-
     public static synchronized WallpaperItem getActiveItem(Context context, boolean isDark) {
         Context appCtx = context.getApplicationContext();
         List<WallpaperItem> items = listWallpapers(appCtx, isDark);
@@ -335,14 +324,6 @@ public final class WallpaperRepository {
         }
         WallpaperItem selected = findById(items, prefs.getSelectedWallpaperId(isDark));
         return selected != null ? selected : items.get(0);
-    }
-
-    public static synchronized File getActiveFile(Context context, boolean isDark) {
-        WallpaperItem item = getActiveItem(context, isDark);
-        if (item == null) {
-            return null;
-        }
-        return getWallpaperFile(context, isDark, item.id);
     }
 
     /**
@@ -591,17 +572,6 @@ public final class WallpaperRepository {
                 bitmap.recycle();
             }
         }
-    }
-
-    public static synchronized void clearOriginalBackup(Context context) {
-        Context appCtx = context.getApplicationContext();
-        File backupFile = getBackupFile(appCtx);
-        if (backupFile.exists() && !backupFile.delete()) {
-            AppLogger.w(TAG, "清理原壁纸备份文件失败: " + backupFile.getAbsolutePath());
-        }
-        AppPrefs prefs = new AppPrefs(appCtx);
-        prefs.setHasOriginalBackup(false);
-        prefs.setOriginalBackupMeta(null);
     }
 
     private static WallpaperItem decodeAndSaveUri(Context context, Uri uri, boolean isDark) throws IOException {

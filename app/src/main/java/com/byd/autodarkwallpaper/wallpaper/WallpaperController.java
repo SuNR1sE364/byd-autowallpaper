@@ -34,7 +34,6 @@ public final class WallpaperController {
             "com.byd.autodarkwallpaper.ACTION_WALLPAPER_IMAGES_RELOADED";
     public static final String EXTRA_IS_DARK = "is_dark";
     public static final String EXTRA_ITEM_ID = "item_id";
-    public static final String EXTRA_REASON = "reason";
 
     public interface ApplyStatusListener {
         void onApplyStatusChanged(String statusText, boolean isError);
@@ -111,10 +110,6 @@ public final class WallpaperController {
         lastAppliedItemId = null;
     }
 
-    public static void applyWallpaper(Context context, boolean isDark, String reason, boolean force) {
-        applyWallpaper(context, isDark, reason, force, false);
-    }
-
     public static void applyWallpaper(Context context, boolean isDark, String reason,
                                       boolean force, boolean allowRandomRotate) {
         Context appCtx = context.getApplicationContext();
@@ -159,7 +154,6 @@ public final class WallpaperController {
             intent.setPackage(appCtx.getPackageName());
             intent.putExtra(EXTRA_IS_DARK, isDark);
             intent.putExtra(EXTRA_ITEM_ID, item.id);
-            intent.putExtra(EXTRA_REASON, reason);
             appCtx.sendBroadcast(intent);
             if (active) {
                 notifyApplyStatus("动态壁纸已切换至" + label + "：" + item.displayName, false);
@@ -176,7 +170,6 @@ public final class WallpaperController {
         }
 
         final File targetFile = WallpaperRepository.getWallpaperFile(appCtx, isDark, item.id);
-        final boolean syncLock = prefs.isStaticSyncLockScreen();
         STATIC_EXECUTOR.execute(() -> {
             long start = System.currentTimeMillis();
             Bitmap bitmap = null;
@@ -192,21 +185,17 @@ public final class WallpaperController {
                     throw new IOException("BitmapFactory.decodeFile 返回 null: " + targetFile.getAbsolutePath());
                 }
                 WallpaperManager wm = WallpaperManager.getInstance(appCtx);
-                int flags = WallpaperManager.FLAG_SYSTEM;
-                if (syncLock) {
-                    flags |= WallpaperManager.FLAG_LOCK;
-                }
-                int resultId = wm.setBitmap(bitmap, null, true, flags);
+                int resultId = wm.setBitmap(bitmap, null, true, WallpaperManager.FLAG_SYSTEM);
                 long elapsed = System.currentTimeMillis() - start;
                 AppLogger.i(TAG, "[直接修改壁纸] WallpaperManager.setBitmap 完成: resultId="
-                        + resultId + ", flags=" + flags + ", 耗时=" + elapsed + "ms, 分辨率="
+                        + resultId + ", 耗时=" + elapsed + "ms, 分辨率="
                         + bitmap.getWidth() + "x" + bitmap.getHeight());
                 if (resultId <= 0) {
                     String warnMsg = "WallpaperManager.setBitmap 返回异常 ID=" + resultId + "（可能被车机桌面拦截）";
                     AppLogger.w(TAG, warnMsg);
                     notifyApplyStatus(warnMsg, true);
                 } else {
-                    notifyApplyStatus("已切换" + label + "壁纸：" + item.displayName + " (" + elapsed + "ms)", false);
+                    notifyApplyStatus("已切换" + label + "壁纸：" + item.displayName, false);
                 }
             } catch (Throwable t) {
                 AppLogger.e(TAG, "[直接修改壁纸] WallpaperManager.setBitmap 执行失败", t);

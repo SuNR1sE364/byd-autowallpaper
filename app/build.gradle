@@ -15,10 +15,25 @@ android {
         versionName "2.0.0"
     }
 
+    signingConfigs {
+        release {
+            def storeFilePath = System.getenv("ANDROID_KEYSTORE_PATH")
+            if (storeFilePath != null && !storeFilePath.isEmpty()) {
+                storeFile file(storeFilePath)
+                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (signingConfigs.release.storeFile != null) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 
@@ -26,8 +41,21 @@ android {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
     }
+
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+            returnDefaultValues = true
+        }
+    }
 }
 
 dependencies {
-    compileOnly files('../bydauto-openapi.jar')
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+    testImplementation 'org.ow2.asm:asm:9.9.1'
+    testImplementation 'org.ow2.asm:asm-commons:9.9.1'
+    testImplementation 'org.ow2.asm:asm-tree:9.9.1'
+    testImplementation 'org.ow2.asm:asm-util:9.9.1'
+    testImplementation 'org.ow2.asm:asm-analysis:9.9.1'
 }

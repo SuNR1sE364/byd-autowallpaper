@@ -1,11 +1,11 @@
 package com.byd.autodarkwallpaper.service;
 
 import android.animation.ValueAnimator;
+import android.annotation.SuppressLint;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -39,10 +39,6 @@ public class AutoDarkWallpaperService extends WallpaperService {
     private static final long TRANSITION_DURATION_MS = 400L;
 
     private static final Set<AutoDarkEngine> ACTIVE_ENGINES = new CopyOnWriteArraySet<>();
-
-    public static void notifyTargetStateChanged(boolean isDark, String reason) {
-        notifyTargetStateChanged(isDark, null, reason);
-    }
 
     public static void notifyTargetStateChanged(boolean isDark, String itemId, String reason) {
         AppLogger.i(TAG, "通知动态壁纸 Engine (" + ACTIVE_ENGINES.size()
@@ -178,6 +174,7 @@ public class AutoDarkWallpaperService extends WallpaperService {
             return false;
         }
 
+        @SuppressLint("UnspecifiedRegisterReceiverFlag")
         private void registerStateReceiver() {
             stateReceiver = new BroadcastReceiver() {
                 @Override

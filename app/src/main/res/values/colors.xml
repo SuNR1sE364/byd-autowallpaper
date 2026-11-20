@@ -21,10 +21,7 @@
     <color name="accent_primary_soft">#E8F3FF</color>
 
     <color name="status_success">#16A34A</color>
-    <color name="status_success_soft">#E8F8EE</color>
     <color name="status_warning">#D97706</color>
-    <color name="status_warning_soft">#FEF3C7</color>
-    <color name="status_danger">#DC2626</color>
     <color name="status_idle">#94A3B8</color>
 
     <color name="switch_track_off">#CBD5E1</color>

@@ -1,6 +1,7 @@
 package com.byd.autodarkwallpaper.ui;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.WallpaperManager;
@@ -42,7 +43,6 @@ import com.byd.autodarkwallpaper.monitor.VehicleStateMonitor;
 import com.byd.autodarkwallpaper.service.AutoDarkMonitorService;
 import com.byd.autodarkwallpaper.service.AutoDarkWallpaperService;
 import com.byd.autodarkwallpaper.util.AppLogger;
-import com.byd.autodarkwallpaper.util.DayNightProbeHelper;
 import com.byd.autodarkwallpaper.wallpaper.WallpaperController;
 import com.byd.autodarkwallpaper.wallpaper.WallpaperRepository;
 
@@ -147,11 +147,6 @@ public class MainActivity extends Activity {
     private TextView tvAboutDeviceInfo;
     private Switch switchDebugMode;
     private View cardDebugConsole;
-    private TextView tvProbeStatus;
-    private Button btnProbeSnapA;
-    private Button btnProbeSnapB;
-    private Button btnProbeSnapC;
-    private Button btnProbeLiveToggle;
     private TextView tvLogFilePath;
     private Button btnSetLogPath;
     private Button btnCopyLogs;
@@ -159,13 +154,6 @@ public class MainActivity extends Activity {
     private Button btnClearLogs;
     private ScrollView scrollLog;
     private TextView tvLogConsole;
-
-    private DayNightProbeHelper probeHelper;
-    private volatile boolean probeBusy = false;
-    private static volatile DayNightProbeHelper.ProbeSnapshot probeSnapA;
-    private static volatile DayNightProbeHelper.ProbeSnapshot probeSnapB;
-    private static volatile DayNightProbeHelper.ProbeSnapshot probeSnapC;
-    private static volatile DayNightProbeHelper.ProbeSnapshot lastProbeSnap;
 
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private Boolean appliedUiDarkMode = null;
@@ -216,7 +204,6 @@ public class MainActivity extends Activity {
         AppLogger.init(this);
         setContentView(R.layout.activity_main);
         prefs = new AppPrefs(this);
-        probeHelper = new DayNightProbeHelper(this);
 
         if (savedInstanceState != null) {
             currentTab = savedInstanceState.getInt(STATE_TAB, TAB_HOME);
@@ -353,9 +340,6 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        if (probeHelper != null) {
-            probeHelper.stopLiveWatch();
-        }
         if (gridAdapter != null) {
             gridAdapter.release();
         }
@@ -436,11 +420,6 @@ public class MainActivity extends Activity {
         tvAboutDeviceInfo = findViewById(R.id.tvAboutDeviceInfo);
         switchDebugMode = findViewById(R.id.switchDebugMode);
         cardDebugConsole = findViewById(R.id.cardDebugConsole);
-        tvProbeStatus = findViewById(R.id.tvProbeStatus);
-        btnProbeSnapA = findViewById(R.id.btnProbeSnapA);
-        btnProbeSnapB = findViewById(R.id.btnProbeSnapB);
-        btnProbeSnapC = findViewById(R.id.btnProbeSnapC);
-        btnProbeLiveToggle = findViewById(R.id.btnProbeLiveToggle);
         tvLogFilePath = findViewById(R.id.tvLogFilePath);
         btnSetLogPath = findViewById(R.id.btnSetLogPath);
         btnCopyLogs = findViewById(R.id.btnCopyLogs);
@@ -518,11 +497,6 @@ public class MainActivity extends Activity {
             AppLogger.i(TAG, "调试模式 -> " + (isChecked ? "已开启" : "已关闭"));
             syncDebugConsoleState();
         });
-
-        btnProbeSnapA.setOnClickListener(v -> triggerProbeSnapshot('A'));
-        btnProbeSnapB.setOnClickListener(v -> triggerProbeSnapshot('B'));
-        btnProbeSnapC.setOnClickListener(v -> triggerProbeSnapshot('C'));
-        btnProbeLiveToggle.setOnClickListener(v -> toggleProbeLiveWatch());
 
         btnSetLogPath.setOnClickListener(v -> showLogPathConfigDialog());
         tvLogFilePath.setOnClickListener(v -> showLogPathConfigDialog());
@@ -607,7 +581,7 @@ public class MainActivity extends Activity {
             tvSystemModePill.setText(pillText);
         } else {
             ivSystemModeIcon.setImageResource(R.drawable.ic_sun);
-            tvSystemModePill.setText("模式未知 (未检测到 BYD 信号)");
+            tvSystemModePill.setText("当前：未检测到车机日夜模式");
         }
 
         boolean enabled = prefs.isEnabled();
@@ -1201,121 +1175,10 @@ public class MainActivity extends Activity {
         cardDebugConsole.setVisibility(debugEnabled ? View.VISIBLE : View.GONE);
         if (debugEnabled) {
             refreshLogLocationText();
-            refreshProbeStatusUi();
             registerLogListenerIfNeeded();
         } else {
-            if (probeHelper != null) {
-                probeHelper.stopLiveWatch();
-            }
-            refreshProbeStatusUi();
             unregisterLogListenerIfNeeded();
         }
-    }
-
-    private void refreshProbeStatusUi() {
-        if (tvProbeStatus == null || btnProbeLiveToggle == null) {
-            return;
-        }
-        String aText = (probeSnapA != null) ? probeSnapA.capturedTimeText : "未抓取";
-        String bText = (probeSnapB != null) ? probeSnapB.capturedTimeText : "未抓取";
-        String cText = (probeSnapC != null) ? probeSnapC.capturedTimeText : "未抓取";
-        boolean watching = (probeHelper != null && probeHelper.isLiveWatching());
-        tvProbeStatus.setText("快照 A：" + aText
-                + "  |  快照 B：" + bText
-                + "  |  快照 C：" + cText
-                + "  |  实时监听：" + (watching ? "运行中" : "关"));
-        btnProbeLiveToggle.setText(watching ? "停止实时监听" : "开启实时监听");
-        btnProbeSnapA.setEnabled(!probeBusy);
-        btnProbeSnapB.setEnabled(!probeBusy);
-        btnProbeSnapC.setEnabled(!probeBusy);
-    }
-
-    private void toggleProbeLiveWatch() {
-        if (probeHelper == null) {
-            return;
-        }
-        if (probeHelper.isLiveWatching()) {
-            probeHelper.stopLiveWatch();
-            Toast.makeText(this, "已停止实时变动监听", Toast.LENGTH_SHORT).show();
-        } else {
-            probeHelper.startLiveWatch();
-            Toast.makeText(this, "已开启实时监听，请切换车机日/夜模式观察日志", Toast.LENGTH_LONG).show();
-        }
-        refreshProbeStatusUi();
-    }
-
-    private void triggerProbeSnapshot(final char slot) {
-        if (probeHelper == null) {
-            return;
-        }
-        if (probeBusy) {
-            Toast.makeText(this, "正在抓取快照，请稍候...", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        probeBusy = true;
-        refreshProbeStatusUi();
-
-        final String label;
-        final boolean includeHighlights;
-        if (slot == 'A') {
-            label = "快照A-日间";
-            includeHighlights = true;
-        } else if (slot == 'B') {
-            label = "快照B-夜间";
-            includeHighlights = (probeSnapA == null);
-        } else {
-            label = "快照C-自动";
-            includeHighlights = (probeSnapA == null && probeSnapB == null);
-        }
-        Toast.makeText(this, "正在扫描系统设置与属性 (" + label + ")...", Toast.LENGTH_SHORT).show();
-
-        ioExecutor.execute(() -> {
-            try {
-                DayNightProbeHelper.ProbeSnapshot prevSnap = lastProbeSnap;
-                DayNightProbeHelper.ProbeSnapshot current = probeHelper.captureSnapshot(label, includeHighlights);
-                String summaryMsg = label + " 抓取完成";
-
-                if (slot == 'A') {
-                    probeSnapA = current;
-                    if (probeSnapB != null) {
-                        summaryMsg = probeHelper.diffAndLog(probeSnapB, current);
-                    }
-                } else if (slot == 'B') {
-                    probeSnapB = current;
-                    if (probeSnapA != null) {
-                        summaryMsg = probeHelper.diffAndLog(probeSnapA, current);
-                    } else if (prevSnap != null) {
-                        summaryMsg = probeHelper.diffAndLog(prevSnap, current);
-                    }
-                } else {
-                    probeSnapC = current;
-                    if (probeSnapA != null) {
-                        summaryMsg = "A->C: " + probeHelper.diffAndLog(probeSnapA, current);
-                    }
-                    if (probeSnapB != null) {
-                        String bc = probeHelper.diffAndLog(probeSnapB, current);
-                        summaryMsg = (probeSnapA != null) ? (summaryMsg + " | B->C: " + bc) : ("B->C: " + bc);
-                    } else if (probeSnapA == null && prevSnap != null) {
-                        summaryMsg = probeHelper.diffAndLog(prevSnap, current);
-                    }
-                }
-                lastProbeSnap = current;
-
-                final String finalToast = summaryMsg;
-                runOnUiThread(() -> {
-                    probeBusy = false;
-                    refreshProbeStatusUi();
-                    Toast.makeText(MainActivity.this, finalToast, Toast.LENGTH_LONG).show();
-                });
-            } catch (Throwable t) {
-                AppLogger.e(TAG, "抓取日/夜模式探测快照失败 (" + label + ")", t);
-                runOnUiThread(() -> {
-                    probeBusy = false;
-                    refreshProbeStatusUi();
-                    Toast.makeText(MainActivity.this, "探测失败: " + t.getMessage(), Toast.LENGTH_LONG).show();
-                });
-            }
-        });
     }
 
     private void registerLogListenerIfNeeded() {
@@ -1496,6 +1359,7 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    @SuppressLint("WrongConstant")
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null) {

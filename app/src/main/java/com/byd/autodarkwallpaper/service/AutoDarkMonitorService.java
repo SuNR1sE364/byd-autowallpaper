@@ -35,10 +35,7 @@ public class AutoDarkMonitorService extends Service {
 
     public static final String ACTION_START_MONITOR = "com.byd.autodarkwallpaper.ACTION_START_MONITOR";
     public static final String ACTION_BOOT_START = "com.byd.autodarkwallpaper.ACTION_BOOT_START";
-    public static final String ACTION_POLL_NOW = "com.byd.autodarkwallpaper.ACTION_POLL_NOW";
     public static final String ACTION_CONFIG_UPDATED = "com.byd.autodarkwallpaper.ACTION_CONFIG_UPDATED";
-    public static final String ACTION_MANUAL_APPLY = "com.byd.autodarkwallpaper.ACTION_MANUAL_APPLY";
-    public static final String EXTRA_MANUAL_IS_DARK = "manual_is_dark";
 
     public interface MonitorObserver {
         void onMonitorStateChanged(boolean running,
@@ -55,16 +52,13 @@ public class AutoDarkMonitorService extends Service {
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private VehicleStateMonitor stateMonitor;
-    private Runnable pendingApplyRunnable;
-    private Boolean pendingTargetDark = null;
     private Boolean lastObservedDark = null;
-    private boolean hasAppliedOnce = false;
 
     private final Runnable quietPollRunnable = new Runnable() {
         @Override
         public void run() {
             if (activeInstance == AutoDarkMonitorService.this && stateMonitor != null) {
-                stateMonitor.pollConnectedHardwareQuietly();
+                stateMonitor.pollQuietly();
                 mainHandler.postDelayed(this, QUIET_POLL_INTERVAL_MS);
             }
         }
@@ -72,14 +66,6 @@ public class AutoDarkMonitorService extends Service {
 
     public static boolean isRunning() {
         return activeInstance != null;
-    }
-
-    public static VehicleStateMonitor.TelemetrySnapshot getLatestSnapshot() {
-        return latestSnapshot;
-    }
-
-    public static VehicleStateMonitor.EvaluationResult getLatestEvaluation() {
-        return latestEvaluation;
     }
 
     public static void addObserver(MonitorObserver observer) {
@@ -110,16 +96,6 @@ public class AutoDarkMonitorService extends Service {
         context.getApplicationContext().stopService(intent);
     }
 
-    public static void requestPollNow(Context context) {
-        if (!isRunning()) {
-            startMonitor(context);
-            return;
-        }
-        Intent intent = new Intent(context.getApplicationContext(), AutoDarkMonitorService.class);
-        intent.setAction(ACTION_POLL_NOW);
-        startForegroundSafely(context.getApplicationContext(), intent);
-    }
-
     public static void notifyConfigUpdated(Context context) {
         if (!isRunning()) {
             return;
@@ -146,11 +122,10 @@ public class AutoDarkMonitorService extends Service {
         promoteToForeground("正在启动自动深浅壁纸服务...");
         AppLogger.i(TAG, "AutoDarkMonitorService.onCreate()");
 
-        stateMonitor = new VehicleStateMonitor(this, false);
+        stateMonitor = new VehicleStateMonitor(this);
         stateMonitor.setOnStateChangedListener(snapshot -> {
             latestSnapshot = snapshot;
-            boolean firstApply = !hasAppliedOnce;
-            evaluateAndSchedule(firstApply, false, false);
+            evaluateAndApply(false, false);
         });
         stateMonitor.start();
         mainHandler.postDelayed(quietPollRunnable, QUIET_POLL_INTERVAL_MS);
@@ -167,20 +142,12 @@ public class AutoDarkMonitorService extends Service {
                 stateMonitor.pollAllStatesNow();
             }
             WallpaperController.resetDedupState();
-            evaluateAndSchedule(true, true, true);
-        } else if (ACTION_POLL_NOW.equals(action)) {
-            if (stateMonitor != null) {
-                stateMonitor.pollAllStatesNow();
-            }
-            evaluateAndSchedule(true, true, false);
+            evaluateAndApply(true, true);
         } else if (ACTION_CONFIG_UPDATED.equals(action)) {
             WallpaperController.resetDedupState();
-            evaluateAndSchedule(true, true, false);
-        } else if (ACTION_MANUAL_APPLY.equals(action) && intent != null) {
-            boolean isDark = intent.getBooleanExtra(EXTRA_MANUAL_IS_DARK, false);
-            WallpaperController.applyWallpaper(this, isDark, "手动切换", true, false);
+            evaluateAndApply(true, false);
         } else {
-            evaluateAndSchedule(!hasAppliedOnce, false, false);
+            evaluateAndApply(false, false);
         }
         return START_STICKY;
     }
@@ -189,13 +156,11 @@ public class AutoDarkMonitorService extends Service {
     public void onDestroy() {
         activeInstance = null;
         mainHandler.removeCallbacks(quietPollRunnable);
-        cancelPendingApply();
         if (stateMonitor != null) {
             stateMonitor.stop();
             stateMonitor = null;
         }
         lastObservedDark = null;
-        hasAppliedOnce = false;
         latestEvaluation = new VehicleStateMonitor.EvaluationResult(
                 false, false, "已停止", "自动切换服务已关闭");
         AppLogger.i(TAG, "AutoDarkMonitorService.onDestroy()");
@@ -208,25 +173,23 @@ public class AutoDarkMonitorService extends Service {
         return null;
     }
 
-    private void evaluateAndSchedule(boolean immediate, boolean forceApply, boolean forceRandomRotate) {
+    private void evaluateAndApply(boolean forceApply, boolean forceRandomRotate) {
         if (stateMonitor == null) {
             return;
         }
         AppPrefs prefs = new AppPrefs(this);
-        VehicleStateMonitor.EvaluationResult result = stateMonitor.evaluateTargetDarkState(prefs);
+        VehicleStateMonitor.EvaluationResult result = stateMonitor.evaluateTargetDarkState();
         latestSnapshot = stateMonitor.getSnapshot();
         latestEvaluation = result;
         notifyObservers();
         updateNotification(buildNotificationSummary());
 
         if (!prefs.isEnabled()) {
-            cancelPendingApply();
             AppLogger.i(TAG, "自动切换开关未开启，跳过壁纸切换");
             return;
         }
 
         if (!result.valid) {
-            cancelPendingApply();
             AppLogger.w(TAG, "系统模式读取异常: " + result.reason + " | " + result.errorDetail);
             return;
         }
@@ -239,37 +202,7 @@ public class AutoDarkMonitorService extends Service {
                 ? "开机/上电启动 (" + result.reason + ")"
                 : (modeTransition ? "系统日夜切换 (" + result.reason + ")" : result.reason);
 
-        long debounceMs = immediate ? 0L : prefs.getDebounceMs();
-        if (debounceMs <= 0L) {
-            cancelPendingApply();
-            hasAppliedOnce = true;
-            WallpaperController.applyWallpaper(this, targetDark, reason, forceApply, allowRandomRotate);
-            return;
-        }
-
-        if (pendingApplyRunnable != null && pendingTargetDark != null && pendingTargetDark == targetDark) {
-            return;
-        }
-
-        cancelPendingApply();
-        pendingTargetDark = targetDark;
-        pendingApplyRunnable = () -> {
-            pendingApplyRunnable = null;
-            pendingTargetDark = null;
-            hasAppliedOnce = true;
-            WallpaperController.applyWallpaper(
-                    AutoDarkMonitorService.this, targetDark, reason, forceApply, allowRandomRotate);
-            updateNotification(buildNotificationSummary());
-        };
-        mainHandler.postDelayed(pendingApplyRunnable, debounceMs);
-    }
-
-    private void cancelPendingApply() {
-        if (pendingApplyRunnable != null) {
-            mainHandler.removeCallbacks(pendingApplyRunnable);
-            pendingApplyRunnable = null;
-        }
-        pendingTargetDark = null;
+        WallpaperController.applyWallpaper(this, targetDark, reason, forceApply, allowRandomRotate);
     }
 
     private String buildNotificationSummary() {
