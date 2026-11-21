@@ -5,6 +5,7 @@ import android.app.WallpaperInfo;
 import android.app.WallpaperManager;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.content.res.AssetFileDescriptor;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -13,11 +14,15 @@ import android.graphics.Matrix;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.media.ExifInterface;
+import android.media.MediaExtractor;
+import android.media.MediaFormat;
+import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
+import android.webkit.MimeTypeMap;
 
 import com.byd.autodarkwallpaper.config.AppPrefs;
 import com.byd.autodarkwallpaper.util.AppLogger;
@@ -34,37 +39,109 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 
 /**
  * 日常壁纸库与原系统壁纸备份仓库。
- * 负责日/夜多壁纸管理、指定或随机选取、旧版自定义壁纸迁移以及直接修改模式下的原壁纸备份/复原。
+ * 负责日/夜多壁纸管理（图片及动态模式视频）、指定或随机选取、旧版自定义壁纸迁移以及直接修改模式下的原壁纸备份/复原。
  */
 public final class WallpaperRepository {
 
     private static final String TAG = "WallpaperRepo";
     private static final int MAX_IMPORT_EDGE = 3840;
+    private static final int MAX_VIDEO_THUMB_EDGE = 960;
     private static final String LIBRARY_FILE_NAME = "library.json";
     private static final String BACKUP_FILE_NAME = "original_backup.img";
     private static final Random RANDOM = new Random();
+    private static final Set<String> VIDEO_EXTENSIONS = new HashSet<>(Arrays.asList(
+            ".mp4", ".m4v", ".mov", ".3gp", ".3gpp", ".mkv", ".webm", ".ts", ".avi", ".flv", ".mpg", ".mpeg"
+    ));
 
     public static final class WallpaperItem {
+        public static final String MEDIA_TYPE_IMAGE = "image";
+        public static final String MEDIA_TYPE_VIDEO = "video";
+
         public final String id;
         public final String displayName;
         public final int width;
         public final int height;
         public final long sizeBytes;
         public final long addedAt;
+        public final String mediaType;
+        public final String fileName;
+        public final long durationMs;
+        public final float fps;
+        public final int rotation;
 
         public WallpaperItem(String id, String displayName, int width, int height, long sizeBytes, long addedAt) {
+            this(id, displayName, width, height, sizeBytes, addedAt,
+                    MEDIA_TYPE_IMAGE, id + ".jpg", 0L, 0f, 0);
+        }
+
+        public WallpaperItem(String id,
+                             String displayName,
+                             int width,
+                             int height,
+                             long sizeBytes,
+                             long addedAt,
+                             String mediaType,
+                             String fileName,
+                             long durationMs,
+                             float fps,
+                             int rotation) {
             this.id = id;
             this.displayName = displayName;
             this.width = width;
             this.height = height;
             this.sizeBytes = sizeBytes;
             this.addedAt = addedAt;
+            this.mediaType = MEDIA_TYPE_VIDEO.equals(mediaType) ? MEDIA_TYPE_VIDEO : MEDIA_TYPE_IMAGE;
+            this.fileName = (fileName != null && !fileName.trim().isEmpty()) ? fileName.trim() : (id + ".jpg");
+            this.durationMs = Math.max(0L, durationMs);
+            this.fps = (Float.isNaN(fps) || Float.isInfinite(fps) || fps < 0f) ? 0f : fps;
+            this.rotation = rotation;
+        }
+
+        public boolean isVideo() {
+            return MEDIA_TYPE_VIDEO.equals(mediaType);
+        }
+    }
+
+    public static final class VideoInspection {
+        public final Uri uri;
+        public final String displayName;
+        public final int width;
+        public final int height;
+        public final int rotation;
+        public final long durationMs;
+        public final float fps;
+        public final long sizeBytes;
+        public final VideoSpecEvaluator.EvaluationResult specResult;
+
+        public VideoInspection(Uri uri,
+                               String displayName,
+                               int width,
+                               int height,
+                               int rotation,
+                               long durationMs,
+                               float fps,
+                               long sizeBytes,
+                               VideoSpecEvaluator.EvaluationResult specResult) {
+            this.uri = uri;
+            this.displayName = displayName;
+            this.width = width;
+            this.height = height;
+            this.rotation = rotation;
+            this.durationMs = durationMs;
+            this.fps = fps;
+            this.sizeBytes = sizeBytes;
+            this.specResult = specResult;
         }
     }
 
@@ -124,11 +201,43 @@ public final class WallpaperRepository {
         return new File(getRootDir(context), BACKUP_FILE_NAME);
     }
 
+    public static File getWallpaperFile(Context context, boolean isDark, WallpaperItem item) {
+        if (item == null || item.fileName == null || item.fileName.trim().isEmpty()) {
+            return null;
+        }
+        return new File(getModeDir(context, isDark), item.fileName.trim());
+    }
+
     public static File getWallpaperFile(Context context, boolean isDark, String itemId) {
         if (itemId == null || itemId.trim().isEmpty()) {
             return null;
         }
-        return new File(getModeDir(context, isDark), itemId.trim() + ".jpg");
+        String trimmedId = itemId.trim();
+        WallpaperItem item = findItemById(context, isDark, trimmedId);
+        if (item != null) {
+            return getWallpaperFile(context, isDark, item);
+        }
+        return new File(getModeDir(context, isDark), trimmedId + ".jpg");
+    }
+
+    public static File getThumbnailFile(Context context, boolean isDark, WallpaperItem item) {
+        if (item == null || item.id == null || item.id.trim().isEmpty()) {
+            return null;
+        }
+        if (item.isVideo()) {
+            return new File(getModeDir(context, isDark), item.id.trim() + "_thumb.jpg");
+        }
+        return getWallpaperFile(context, isDark, item);
+    }
+
+    public static synchronized WallpaperItem findItemById(Context context, boolean isDark, String itemId) {
+        if (itemId == null || itemId.trim().isEmpty()) {
+            return null;
+        }
+        Context appCtx = context.getApplicationContext();
+        LibraryData data = readLibraryLocked(appCtx);
+        List<WallpaperItem> list = isDark ? data.nightItems : data.dayItems;
+        return findById(list, itemId.trim());
     }
 
     /**
@@ -205,7 +314,7 @@ public final class WallpaperRepository {
         List<WallpaperItem> valid = new ArrayList<>();
         boolean dirty = false;
         for (WallpaperItem item : raw) {
-            File f = getWallpaperFile(appCtx, isDark, item.id);
+            File f = getWallpaperFile(appCtx, isDark, item);
             if (f != null && f.exists() && f.length() > 0L) {
                 valid.add(item);
             } else {
@@ -225,10 +334,34 @@ public final class WallpaperRepository {
         return new ArrayList<>(valid);
     }
 
+    public static synchronized List<WallpaperItem> listWallpapers(
+            Context context, boolean isDark, boolean includeVideos) {
+        List<WallpaperItem> all = listWallpapers(context, isDark);
+        if (includeVideos) {
+            return all;
+        }
+        return filterOutVideos(all);
+    }
+
+    private static List<WallpaperItem> filterOutVideos(List<WallpaperItem> items) {
+        List<WallpaperItem> images = new ArrayList<>();
+        for (WallpaperItem item : items) {
+            if (!item.isVideo()) {
+                images.add(item);
+            }
+        }
+        return images;
+    }
+
     public static synchronized ImportResult importWallpapersFromUris(
             Context context, List<Uri> uris, boolean isDark) throws IOException {
+        return importWallpapersFromUris(context, uris, isDark, true);
+    }
+
+    public static synchronized ImportResult importWallpapersFromUris(
+            Context context, List<Uri> uris, boolean isDark, boolean allowVideo) throws IOException {
         if (uris == null || uris.isEmpty()) {
-            throw new IOException("未选择任何图片");
+            throw new IOException("未选择任何壁纸文件");
         }
         Context appCtx = context.getApplicationContext();
         LibraryData data = readLibraryLocked(appCtx);
@@ -240,7 +373,15 @@ public final class WallpaperRepository {
                 continue;
             }
             try {
-                WallpaperItem item = decodeAndSaveUri(appCtx, uri, isDark);
+                WallpaperItem item;
+                if (isVideoUri(appCtx, uri)) {
+                    if (!allowVideo) {
+                        throw new IOException("直接修改壁纸模式不支持视频壁纸，请切换为动态壁纸模式");
+                    }
+                    item = importVideoFromUri(appCtx, uri, isDark);
+                } else {
+                    item = decodeAndSaveUri(appCtx, uri, isDark);
+                }
                 targetList.add(item);
                 result.importedItems.add(item);
             } catch (Throwable t) {
@@ -268,7 +409,7 @@ public final class WallpaperRepository {
 
         writeLibraryLocked(appCtx, data);
         AppLogger.i(TAG, "导入" + (isDark ? "夜间" : "日间") + "壁纸完成: 成功 "
-                + result.importedItems.size() + " 张, 失败 " + result.errorMessages.size() + " 张");
+                + result.importedItems.size() + " 项, 失败 " + result.errorMessages.size() + " 项");
         return result;
     }
 
@@ -281,20 +422,29 @@ public final class WallpaperRepository {
         LibraryData data = readLibraryLocked(appCtx);
         List<WallpaperItem> targetList = isDark ? data.nightItems : data.dayItems;
 
-        boolean removed = false;
+        List<WallpaperItem> removedItems = new ArrayList<>();
         for (int i = targetList.size() - 1; i >= 0; i--) {
-            if (itemId.equals(targetList.get(i).id)) {
+            WallpaperItem item = targetList.get(i);
+            if (itemId.equals(item.id)) {
+                removedItems.add(item);
                 targetList.remove(i);
-                removed = true;
             }
         }
-        if (!removed) {
+        if (removedItems.isEmpty()) {
             return false;
         }
 
-        File file = getWallpaperFile(appCtx, isDark, itemId);
-        if (file != null && file.exists() && !file.delete()) {
-            AppLogger.w(TAG, "删除壁纸磁盘文件失败: " + file.getAbsolutePath());
+        for (WallpaperItem removedItem : removedItems) {
+            File file = getWallpaperFile(appCtx, isDark, removedItem);
+            if (file != null && file.exists() && !file.delete()) {
+                AppLogger.w(TAG, "删除壁纸磁盘文件失败: " + file.getAbsolutePath());
+            }
+            if (removedItem.isVideo()) {
+                File thumb = getThumbnailFile(appCtx, isDark, removedItem);
+                if (thumb != null && thumb.exists() && !thumb.delete()) {
+                    AppLogger.w(TAG, "删除视频缩略图失败: " + thumb.getAbsolutePath());
+                }
+            }
         }
 
         AppPrefs prefs = new AppPrefs(appCtx);
@@ -312,8 +462,12 @@ public final class WallpaperRepository {
     }
 
     public static synchronized WallpaperItem getActiveItem(Context context, boolean isDark) {
+        return getActiveItem(context, isDark, true);
+    }
+
+    public static synchronized WallpaperItem getActiveItem(Context context, boolean isDark, boolean allowVideo) {
         Context appCtx = context.getApplicationContext();
-        List<WallpaperItem> items = listWallpapers(appCtx, isDark);
+        List<WallpaperItem> items = listWallpapers(appCtx, isDark, allowVideo);
         if (items.isEmpty()) {
             return null;
         }
@@ -328,13 +482,19 @@ public final class WallpaperRepository {
 
     /**
      * 解析本次应用应当使用的壁纸项：
-     * - 指定模式：取选中项（失效则回落到第一项并同步更新配置）。
+     * - 指定模式：取选中项（失效则回落到第一项并同步更新配置；静态模式下若原选中为视频，保留原选中ID不被覆盖）。
      * - 随机模式：当 allowRandomRotate 为 true 或尚无有效当前项时随机选取（尽量避免与当前项连续重复）。
      */
     public static synchronized WallpaperItem resolveItemForApply(
             Context context, boolean isDark, boolean allowRandomRotate) {
+        return resolveItemForApply(context, isDark, allowRandomRotate, true);
+    }
+
+    public static synchronized WallpaperItem resolveItemForApply(
+            Context context, boolean isDark, boolean allowRandomRotate, boolean allowVideo) {
         Context appCtx = context.getApplicationContext();
-        List<WallpaperItem> items = listWallpapers(appCtx, isDark);
+        List<WallpaperItem> allItems = listWallpapers(appCtx, isDark, true);
+        List<WallpaperItem> items = allowVideo ? allItems : filterOutVideos(allItems);
         if (items.isEmpty()) {
             return null;
         }
@@ -342,10 +502,15 @@ public final class WallpaperRepository {
         int selectionMode = prefs.getSelectionMode(isDark);
 
         if (selectionMode == AppPrefs.SELECT_FIXED) {
-            WallpaperItem selected = findById(items, prefs.getSelectedWallpaperId(isDark));
+            String selectedId = prefs.getSelectedWallpaperId(isDark);
+            WallpaperItem selected = findById(items, selectedId);
             if (selected == null) {
+                WallpaperItem existingInAll = findById(allItems, selectedId);
+                boolean preservedVideoSelection = !allowVideo && existingInAll != null && existingInAll.isVideo();
                 selected = items.get(0);
-                prefs.setSelectedWallpaperId(isDark, selected.id);
+                if (!preservedVideoSelection) {
+                    prefs.setSelectedWallpaperId(isDark, selected.id);
+                }
             }
             prefs.setActiveWallpaperId(isDark, selected.id);
             return selected;
@@ -574,6 +739,262 @@ public final class WallpaperRepository {
         }
     }
 
+    public static boolean isVideoUri(Context context, Uri uri) {
+        if (uri == null || context == null) {
+            return false;
+        }
+        try {
+            String mime = context.getContentResolver().getType(uri);
+            if (mime != null) {
+                String lowerMime = mime.toLowerCase(Locale.US);
+                if (lowerMime.startsWith("video/")) {
+                    return true;
+                }
+                if (lowerMime.startsWith("image/")) {
+                    return false;
+                }
+            }
+        } catch (Throwable t) {
+            AppLogger.w(TAG, "读取 URI MIME 类型失败: " + uri + " | " + t.getMessage());
+        }
+        String rawName = queryRawDisplayName(context, uri);
+        if (rawName == null) {
+            rawName = uri.getLastPathSegment();
+        }
+        String ext = extractExtension(rawName);
+        return ext != null && VIDEO_EXTENSIONS.contains(ext);
+    }
+
+    public static List<VideoInspection> inspectHighSpecVideos(Context context, List<Uri> uris) {
+        List<VideoInspection> warnings = new ArrayList<>();
+        if (context == null || uris == null || uris.isEmpty()) {
+            return warnings;
+        }
+        Context appCtx = context.getApplicationContext();
+        for (Uri uri : uris) {
+            if (uri == null || !isVideoUri(appCtx, uri)) {
+                continue;
+            }
+            try {
+                long sizeBytes = queryUriSizeBytes(appCtx, uri);
+                String displayName = queryDisplayName(appCtx, uri, false);
+                VideoMeta meta = readVideoMeta(appCtx, uri, null);
+                int dispW = meta.displayWidth();
+                int dispH = meta.displayHeight();
+                VideoSpecEvaluator.EvaluationResult eval = VideoSpecEvaluator.evaluate(
+                        dispW, dispH, meta.fps, meta.durationMs, sizeBytes);
+                if (eval.shouldWarn) {
+                    warnings.add(new VideoInspection(
+                            uri, displayName, dispW, dispH, meta.rotation,
+                            meta.durationMs, meta.fps, sizeBytes, eval));
+                }
+            } catch (Throwable t) {
+                AppLogger.e(TAG, "预检视频规格失败: uri=" + uri, t);
+            }
+        }
+        return warnings;
+    }
+
+    private static final class VideoMeta {
+        final int width;
+        final int height;
+        final int rotation;
+        final long durationMs;
+        final float fps;
+
+        VideoMeta(int width, int height, int rotation, long durationMs, float fps) {
+            this.width = width;
+            this.height = height;
+            this.rotation = rotation;
+            this.durationMs = durationMs;
+            this.fps = fps;
+        }
+
+        int displayWidth() {
+            return (rotation == 90 || rotation == 270) ? height : width;
+        }
+
+        int displayHeight() {
+            return (rotation == 90 || rotation == 270) ? width : height;
+        }
+    }
+
+    private static VideoMeta readVideoMeta(Context context, Uri uri, File localFile) throws IOException {
+        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+        try {
+            if (localFile != null) {
+                retriever.setDataSource(localFile.getAbsolutePath());
+            } else {
+                retriever.setDataSource(context, uri);
+            }
+            int width = parseIntSafe(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH), 0);
+            int height = parseIntSafe(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT), 0);
+            int rotation = parseIntSafe(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION), 0);
+            long durationMs = parseLongSafe(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION), 0L);
+
+            float fps = extractVideoFpsFromExtractor(context, uri, localFile);
+            if (fps <= 0f) {
+                fps = parseFloatSafe(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE), 0f);
+            }
+            if (fps <= 0f && durationMs > 0L) {
+                long frameCount = parseLongSafe(
+                        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_FRAME_COUNT), 0L);
+                if (frameCount > 0L) {
+                    fps = frameCount * 1000f / (float) durationMs;
+                }
+            }
+            return new VideoMeta(width, height, rotation, durationMs, fps);
+        } catch (Throwable t) {
+            throw new IOException("解析视频元数据失败: " + t.getMessage(), t);
+        } finally {
+            try {
+                retriever.release();
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    private static float extractVideoFpsFromExtractor(Context context, Uri uri, File localFile) {
+        MediaExtractor extractor = new MediaExtractor();
+        try {
+            if (localFile != null) {
+                extractor.setDataSource(localFile.getAbsolutePath());
+            } else {
+                extractor.setDataSource(context, uri, null);
+            }
+            int trackCount = extractor.getTrackCount();
+            for (int i = 0; i < trackCount; i++) {
+                MediaFormat format = extractor.getTrackFormat(i);
+                String mime = format.getString(MediaFormat.KEY_MIME);
+                if (mime != null && mime.startsWith("video/") && format.containsKey(MediaFormat.KEY_FRAME_RATE)) {
+                    try {
+                        float val = format.getFloat(MediaFormat.KEY_FRAME_RATE);
+                        if (val > 0f) {
+                            return val;
+                        }
+                    } catch (ClassCastException e) {
+                        int intVal = format.getInteger(MediaFormat.KEY_FRAME_RATE);
+                        if (intVal > 0) {
+                            return (float) intVal;
+                        }
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            AppLogger.w(TAG, "MediaExtractor 读取帧率失败: " + t.getMessage());
+        } finally {
+            try {
+                extractor.release();
+            } catch (Throwable ignored) {
+            }
+        }
+        return 0f;
+    }
+
+    private static WallpaperItem importVideoFromUri(Context context, Uri uri, boolean isDark) throws IOException {
+        String id = generateId();
+        String ext = resolveVideoExtension(context, uri);
+        String fileName = id + ext;
+        File modeDir = getModeDir(context, isDark);
+        File targetFile = new File(modeDir, fileName);
+        File tempFile = new File(modeDir, fileName + ".tmp");
+        File thumbFile = new File(modeDir, id + "_thumb.jpg");
+
+        try {
+            long written = 0L;
+            try (InputStream is = context.getContentResolver().openInputStream(uri);
+                 FileOutputStream fos = new FileOutputStream(tempFile, false)) {
+                if (is == null) {
+                    throw new IOException("无法打开视频输入流: " + uri);
+                }
+                byte[] buf = new byte[65536];
+                int len;
+                while ((len = is.read(buf)) != -1) {
+                    fos.write(buf, 0, len);
+                    written += len;
+                }
+                fos.flush();
+            }
+            if (written <= 0L) {
+                throw new IOException("视频文件内容为空: " + uri);
+            }
+
+            VideoMeta meta = readVideoMeta(context, uri, tempFile);
+            if (meta.width <= 0 || meta.height <= 0) {
+                throw new IOException("无法解析视频分辨率，可能不是有效的视频格式");
+            }
+
+            extractAndSaveVideoThumbnail(tempFile, thumbFile);
+
+            if (targetFile.exists() && !targetFile.delete()) {
+                throw new IOException("无法覆盖旧视频文件: " + targetFile.getAbsolutePath());
+            }
+            if (!tempFile.renameTo(targetFile)) {
+                throw new IOException("无法重命名临时视频文件: " + targetFile.getAbsolutePath());
+            }
+
+            String displayName = queryDisplayName(context, uri, isDark);
+            return new WallpaperItem(
+                    id,
+                    displayName,
+                    meta.displayWidth(),
+                    meta.displayHeight(),
+                    targetFile.length(),
+                    System.currentTimeMillis(),
+                    WallpaperItem.MEDIA_TYPE_VIDEO,
+                    fileName,
+                    meta.durationMs,
+                    meta.fps,
+                    meta.rotation);
+        } catch (Throwable t) {
+            cleanupTempFile(tempFile);
+            cleanupTempFile(thumbFile);
+            if (t instanceof IOException) {
+                throw (IOException) t;
+            }
+            throw new IOException("导入视频失败: " + t.getMessage(), t);
+        }
+    }
+
+    private static void extractAndSaveVideoThumbnail(File videoFile, File thumbFile) throws IOException {
+        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+        Bitmap frame = null;
+        Bitmap scaled = null;
+        try {
+            retriever.setDataSource(videoFile.getAbsolutePath());
+            frame = retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+            if (frame == null) {
+                frame = retriever.getFrameAtTime(-1L);
+            }
+            if (frame == null) {
+                throw new IOException("无法提取视频首帧画面，该视频编码可能不受车机支持");
+            }
+            int fw = frame.getWidth();
+            int fh = frame.getHeight();
+            int maxEdge = Math.max(fw, fh);
+            if (maxEdge > MAX_VIDEO_THUMB_EDGE && fw > 0 && fh > 0) {
+                float scale = (float) MAX_VIDEO_THUMB_EDGE / (float) maxEdge;
+                int tw = Math.max(1, Math.round(fw * scale));
+                int th = Math.max(1, Math.round(fh * scale));
+                scaled = Bitmap.createScaledBitmap(frame, tw, th, true);
+                saveBitmapAsJpeg(scaled, thumbFile, 90);
+            } else {
+                saveBitmapAsJpeg(frame, thumbFile, 90);
+            }
+        } finally {
+            if (scaled != null && scaled != frame && !scaled.isRecycled()) {
+                scaled.recycle();
+            }
+            if (frame != null && !frame.isRecycled()) {
+                frame.recycle();
+            }
+            try {
+                retriever.release();
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
     private static WallpaperItem decodeAndSaveUri(Context context, Uri uri, boolean isDark) throws IOException {
         BitmapFactory.Options bounds = new BitmapFactory.Options();
         bounds.inJustDecodeBounds = true;
@@ -667,25 +1088,125 @@ public final class WallpaperRepository {
         return rotated != null ? rotated : src;
     }
 
-    private static String queryDisplayName(Context context, Uri uri, boolean isDark) {
-        String name = null;
+    private static String queryRawDisplayName(Context context, Uri uri) {
         try (Cursor cursor = context.getContentResolver().query(
                 uri, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
             if (cursor != null && cursor.moveToFirst()) {
                 int idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
                 if (idx >= 0) {
-                    name = cursor.getString(idx);
+                    return cursor.getString(idx);
                 }
             }
         } catch (Throwable t) {
             AppLogger.w(TAG, "读取文件显示名称失败: " + t.getMessage());
         }
+        return null;
+    }
+
+    private static String queryDisplayName(Context context, Uri uri, boolean isDark) {
+        String name = queryRawDisplayName(context, uri);
         if (name == null || name.trim().isEmpty()) {
             return isDark ? "夜间壁纸" : "日间壁纸";
         }
         String trimmed = name.trim();
         int dot = trimmed.lastIndexOf('.');
         return (dot > 0) ? trimmed.substring(0, dot) : trimmed;
+    }
+
+    private static long queryUriSizeBytes(Context context, Uri uri) {
+        try (Cursor cursor = context.getContentResolver().query(
+                uri, new String[]{OpenableColumns.SIZE}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int idx = cursor.getColumnIndex(OpenableColumns.SIZE);
+                if (idx >= 0 && !cursor.isNull(idx)) {
+                    long size = cursor.getLong(idx);
+                    if (size > 0L) {
+                        return size;
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            AppLogger.w(TAG, "读取文件大小失败: " + t.getMessage());
+        }
+        try (AssetFileDescriptor afd = context.getContentResolver().openAssetFileDescriptor(uri, "r")) {
+            if (afd != null && afd.getLength() > 0L) {
+                return afd.getLength();
+            }
+        } catch (Throwable t) {
+            AppLogger.w(TAG, "通过 AssetFileDescriptor 读取文件大小失败: " + t.getMessage());
+        }
+        return 0L;
+    }
+
+    private static String resolveVideoExtension(Context context, Uri uri) {
+        String rawName = queryRawDisplayName(context, uri);
+        String ext = extractExtension(rawName);
+        if (ext != null && VIDEO_EXTENSIONS.contains(ext)) {
+            return ext;
+        }
+        try {
+            String mime = context.getContentResolver().getType(uri);
+            if (mime != null) {
+                String fromMime = MimeTypeMap.getSingleton().getExtensionFromMimeType(mime.toLowerCase(Locale.US));
+                if (fromMime != null && !fromMime.trim().isEmpty()) {
+                    String candidate = "." + fromMime.trim().toLowerCase(Locale.US);
+                    if (VIDEO_EXTENSIONS.contains(candidate)) {
+                        return candidate;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return ".mp4";
+    }
+
+    private static String extractExtension(String name) {
+        if (name == null) {
+            return null;
+        }
+        String trimmed = name.trim();
+        int dot = trimmed.lastIndexOf('.');
+        if (dot <= 0 || dot >= trimmed.length() - 1) {
+            return null;
+        }
+        String ext = trimmed.substring(dot).toLowerCase(Locale.US);
+        if (ext.length() > 8) {
+            return null;
+        }
+        return ext;
+    }
+
+    private static int parseIntSafe(String raw, int fallback) {
+        if (raw == null || raw.trim().isEmpty()) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    private static long parseLongSafe(String raw, long fallback) {
+        if (raw == null || raw.trim().isEmpty()) {
+            return fallback;
+        }
+        try {
+            return Long.parseLong(raw.trim());
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    private static float parseFloatSafe(String raw, float fallback) {
+        if (raw == null || raw.trim().isEmpty()) {
+            return fallback;
+        }
+        try {
+            return Float.parseFloat(raw.trim());
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
     }
 
     private static Bitmap drawableToBitmap(Drawable drawable) {
@@ -740,7 +1261,12 @@ public final class WallpaperRepository {
                     obj.optInt("width", 0),
                     obj.optInt("height", 0),
                     obj.optLong("sizeBytes", 0L),
-                    obj.optLong("addedAt", 0L)));
+                    obj.optLong("addedAt", 0L),
+                    obj.optString("mediaType", WallpaperItem.MEDIA_TYPE_IMAGE),
+                    obj.optString("fileName", id + ".jpg"),
+                    obj.optLong("durationMs", 0L),
+                    (float) obj.optDouble("fps", 0.0),
+                    obj.optInt("rotation", 0)));
         }
     }
 
@@ -779,9 +1305,64 @@ public final class WallpaperRepository {
             obj.put("height", item.height);
             obj.put("sizeBytes", item.sizeBytes);
             obj.put("addedAt", item.addedAt);
+            obj.put("mediaType", item.mediaType);
+            obj.put("fileName", item.fileName);
+            obj.put("durationMs", item.durationMs);
+            double safeFps = (Float.isNaN(item.fps) || Float.isInfinite(item.fps)) ? 0.0 : item.fps;
+            obj.put("fps", safeFps);
+            obj.put("rotation", item.rotation);
             arr.put(obj);
         }
         return arr;
+    }
+
+    static synchronized WallpaperItem addVideoItemForTest(Context context,
+                                                           boolean isDark,
+                                                           String displayName,
+                                                           String ext,
+                                                           int width,
+                                                           int height,
+                                                           long durationMs,
+                                                           float fps,
+                                                           int rotation) throws IOException {
+        Context appCtx = context.getApplicationContext();
+        String id = generateId();
+        String safeExt = (ext != null && ext.startsWith(".")) ? ext : ".mp4";
+        String fileName = id + safeExt;
+        File modeDir = getModeDir(appCtx, isDark);
+        File videoFile = new File(modeDir, fileName);
+        try (FileOutputStream fos = new FileOutputStream(videoFile, false)) {
+            fos.write(new byte[]{0x00, 0x00, 0x00, 0x18, 'f', 't', 'y', 'p'});
+            fos.flush();
+        }
+        Bitmap thumb = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888);
+        try {
+            saveBitmapAsJpeg(thumb, new File(modeDir, id + "_thumb.jpg"), 90);
+        } finally {
+            thumb.recycle();
+        }
+        WallpaperItem item = new WallpaperItem(
+                id,
+                displayName,
+                width,
+                height,
+                videoFile.length(),
+                System.currentTimeMillis(),
+                WallpaperItem.MEDIA_TYPE_VIDEO,
+                fileName,
+                durationMs,
+                fps,
+                rotation);
+        LibraryData data = readLibraryLocked(appCtx);
+        List<WallpaperItem> targetList = isDark ? data.nightItems : data.dayItems;
+        targetList.add(item);
+        AppPrefs prefs = new AppPrefs(appCtx);
+        if (prefs.getSelectedWallpaperId(isDark) == null) {
+            prefs.setSelectedWallpaperId(isDark, item.id);
+            prefs.setActiveWallpaperId(isDark, item.id);
+        }
+        writeLibraryLocked(appCtx, data);
+        return item;
     }
 
     private static String readTextFile(File file) throws IOException {

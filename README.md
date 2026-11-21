@@ -13,15 +13,19 @@
   - 若因缺少文件访问权限或当前使用动态壁纸/车机百变主题导致无法读取原壁纸，会引导授权或由用户选择是否不备份继续开启。
   - 开机/上电自启状态直接跟随总开关状态。
 - **两种壁纸切换模式**：
-  1. **直接修改壁纸（默认）**：通过 `WallpaperManager.setBitmap` 直接替换系统桌面静态壁纸。
-  2. **动态壁纸模式**：通过 `AutoDarkWallpaperService` 在内存中完成日/夜图片绘制与 `400ms` 平滑淡入淡出过渡，避免反复刷写磁盘。
+  1. **直接修改壁纸（默认）**：通过 `WallpaperManager.setBitmap` 直接替换系统桌面静态壁纸（仅支持图片）。
+  2. **动态壁纸模式**：通过 `AutoDarkWallpaperService` 结合 **OpenGL ES 2.0 + Media3 ExoPlayer** 统一渲染管线，同时支持**静态图片**与**视频壁纸**（支持 `400ms` 平滑淡入淡出过渡，完全禁用音轨以免干扰车机音乐与导航播报，并在车机可见性变化时自动启停以控制功耗）。
 - **壁纸概览**：展示日间与夜间当前生效壁纸及选取策略，点击可直达“壁纸”页对应分页。
 
 ### 2. 壁纸：多壁纸库与选取策略
 - 独立管理 **日间壁纸** 与 **夜间壁纸**（支持一次上传单张或多张图片，自动处理 EXIF 旋转）。
+- **视频壁纸支持（仅动态壁纸模式可用）**：
+  - 在“动态壁纸模式”下支持混选导入本地视频（不受比亚迪原生相册 20s 时长硬限制，流式保留原视频并自动抽取首帧缩略图）；
+  - 导入前自动预检视频规格：**分辨率 ≥ 2K**、**帧率 > 60fps**、**时长 ≥ 60s**、**体积 > 100MB** 四个条件满足**任意两个及以上**时弹窗提醒，用户可选择“仍然导入”、“跳过高规格视频”或“取消”；
+  - 切回“直接修改壁纸”模式时保留已导入视频文件并在列表中标注“仅动态模式可用”，自动筛选图片生效且不破坏原动态模式选中配置。
 - 两种选取策略（日、夜可分别配置）：
-  - **使用指定壁纸**：固定使用您点击选中的那一张壁纸。
-  - **随机轮换**：在每次系统日/夜模式切换以及车机上电/重启启动时，从多张壁纸中随机更换一张（尽量避免与当前壁纸连续重复）。
+  - **使用指定壁纸**：固定使用您点击选中的那一项壁纸。
+  - **随机轮换**：在每次系统日/夜模式切换以及车机上电/重启启动时，从可用壁纸中随机更换（尽量避免与当前壁纸连续重复）。
 
 ### 3. 关于：应用信息与调试模式
 - 展示应用版本、触发方式、切换模式与当前车机运行环境信息。
@@ -57,10 +61,14 @@ byd-autodarkmode/
         │       ├── config/AppPrefs.java             # SharedPreferences 配置项管理
         │       ├── util/AppLogger.java              # 内存缓冲与本地/SAF 持久化日志工具
         │       ├── monitor/VehicleStateMonitor.java # 比亚迪 key_byd_night_mode / time_wallpaper_mode 实时监听
-        │       ├── wallpaper/WallpaperRepository.java # 多壁纸库存储、随机抽取、原壁纸备份与复原
-        │       ├── wallpaper/WallpaperController.java # 直接修改壁纸与动态壁纸调度控制器
-        │       ├── service/AutoDarkWallpaperService.java # 动态壁纸 Engine（400ms 渐变过渡）
-        │       ├── service/AutoDarkMonitorService.java   # 前台保活监控服务
+        │       ├── wallpaper/
+        │       │   ├── VideoSpecEvaluator.java        # 高规格视频阈值评估器（4 选 2 触发提示）
+        │       │   ├── WallpaperRepository.java       # 多壁纸库存储、视频预检导入、随机抽取与原壁纸备份
+        │       │   └── WallpaperController.java       # 直接修改壁纸与动态壁纸调度控制器
+        │       ├── service/
+        │       │   ├── WallpaperGlRenderer.java       # OpenGL ES 2.0 统一渲染器（2D 图片 + OES 视频帧）
+        │       │   ├── AutoDarkWallpaperService.java  # 动态壁纸 Engine（Media3 ExoPlayer + 400ms 过渡）
+        │       │   └── AutoDarkMonitorService.java    # 前台保活监控服务
         │       ├── receiver/BootReceiver.java       # 开机/上电自启接收器
         │       └── ui/
         │           ├── MainActivity.java            # 左侧导航栏与三大功能页控制逻辑

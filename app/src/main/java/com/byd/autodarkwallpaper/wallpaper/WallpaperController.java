@@ -117,11 +117,18 @@ public final class WallpaperController {
         int mode = prefs.getWallpaperMode();
         String label = isDark ? "夜间" : "日间";
 
+        boolean allowVideo = (mode == AppPrefs.MODE_LIVE_SERVICE);
         WallpaperRepository.WallpaperItem item =
-                WallpaperRepository.resolveItemForApply(appCtx, isDark, allowRandomRotate);
+                WallpaperRepository.resolveItemForApply(appCtx, isDark, allowRandomRotate, allowVideo);
         if (item == null) {
-            AppLogger.w(TAG, "尚未添加" + label + "壁纸，跳过切换 (reason=" + reason + ")");
-            notifyApplyStatus("尚未添加" + label + "壁纸，请先前往“壁纸”页上传", true);
+            if (!allowVideo && !WallpaperRepository.listWallpapers(appCtx, isDark, true).isEmpty()) {
+                String warnMsg = "当前" + label + "壁纸库仅有视频，直接修改模式仅支持图片（请添加图片或切换为动态壁纸模式）";
+                AppLogger.w(TAG, warnMsg + " (reason=" + reason + ")");
+                notifyApplyStatus(warnMsg, true);
+            } else {
+                AppLogger.w(TAG, "尚未添加" + label + "壁纸，跳过切换 (reason=" + reason + ")");
+                notifyApplyStatus("尚未添加" + label + "壁纸，请先前往“壁纸”页上传", true);
+            }
             return;
         }
 
@@ -169,7 +176,13 @@ public final class WallpaperController {
             return;
         }
 
-        final File targetFile = WallpaperRepository.getWallpaperFile(appCtx, isDark, item.id);
+        if (item.isVideo()) {
+            AppLogger.e(TAG, "[直接修改壁纸] 尝试将视频应用为静态壁纸，已拦截: " + item.id);
+            notifyApplyStatus("直接修改模式不支持视频壁纸，请切换为动态壁纸模式", true);
+            return;
+        }
+
+        final File targetFile = WallpaperRepository.getWallpaperFile(appCtx, isDark, item);
         STATIC_EXECUTOR.execute(() -> {
             long start = System.currentTimeMillis();
             Bitmap bitmap = null;

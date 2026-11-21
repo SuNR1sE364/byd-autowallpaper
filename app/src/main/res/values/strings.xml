@@ -4,7 +4,7 @@
     <string name="app_display_name">自动深浅壁纸</string>
     <string name="app_tagline">跟随车机日夜模式，自动切换日间与夜间桌面壁纸</string>
     <string name="live_wallpaper_name">自动深浅动态壁纸</string>
-    <string name="live_wallpaper_description">跟随车机系统深浅色模式自动切换日间与夜间壁纸，支持淡入淡出过渡与多图随机轮换</string>
+    <string name="live_wallpaper_description">跟随车机系统深浅色模式自动切换日间与夜间壁纸（支持图片与视频），支持淡入淡出过渡与多壁纸随机轮换</string>
 
     <string name="nav_home">主页</string>
     <string name="nav_wallpaper">壁纸</string>
@@ -16,7 +16,7 @@
     <string name="home_mode_static_title">直接修改壁纸</string>
     <string name="home_mode_static_desc">直接替换系统桌面静态壁纸。开启前会自动备份当前壁纸，关闭后自动复原。</string>
     <string name="home_mode_live_title">动态壁纸模式</string>
-    <string name="home_mode_live_desc">通过系统动态壁纸引擎渐变切换，无需反复刷写桌面壁纸，过渡自然平滑。</string>
+    <string name="home_mode_live_desc">通过系统动态壁纸引擎渐变切换（支持图片与视频壁纸），无需反复刷写桌面壁纸，过渡自然平滑。</string>
     <string name="btn_activate_live_wallpaper">前往系统激活</string>
     <string name="home_preview_section_title">壁纸概览</string>
 

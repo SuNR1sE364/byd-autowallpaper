@@ -17,6 +17,7 @@ import android.widget.TextView;
 
 import com.byd.autodarkwallpaper.R;
 import com.byd.autodarkwallpaper.config.AppPrefs;
+import com.byd.autodarkwallpaper.wallpaper.VideoSpecEvaluator;
 import com.byd.autodarkwallpaper.wallpaper.WallpaperController;
 import com.byd.autodarkwallpaper.wallpaper.WallpaperRepository;
 
@@ -50,6 +51,7 @@ public class WallpaperGridAdapter extends BaseAdapter {
     private int selectionMode = AppPrefs.SELECT_FIXED;
     private String selectedId = null;
     private String activeId = null;
+    private boolean isLiveMode = true;
 
     public WallpaperGridAdapter(Context context, ItemActionListener listener) {
         this.context = context.getApplicationContext();
@@ -68,7 +70,8 @@ public class WallpaperGridAdapter extends BaseAdapter {
                            boolean isDarkPage,
                            int selectionMode,
                            String selectedId,
-                           String activeId) {
+                           String activeId,
+                           boolean isLiveMode) {
         this.items.clear();
         if (newItems != null) {
             this.items.addAll(newItems);
@@ -77,6 +80,7 @@ public class WallpaperGridAdapter extends BaseAdapter {
         this.selectionMode = selectionMode;
         this.selectedId = selectedId;
         this.activeId = activeId;
+        this.isLiveMode = isLiveMode;
         notifyDataSetChanged();
     }
 
@@ -114,23 +118,41 @@ public class WallpaperGridAdapter extends BaseAdapter {
         final WallpaperRepository.WallpaperItem item = items.get(position);
         holder.tvName.setText(item.displayName);
 
-        long kb = Math.max(1L, item.sizeBytes / 1024L);
-        String sizeText = kb >= 1024L
-                ? String.format(java.util.Locale.CHINA, "%.1f MB", kb / 1024.0)
-                : (kb + " KB");
-        holder.tvMeta.setText(item.width + "×" + item.height + " · " + sizeText);
-
-        boolean isFixedMode = (selectionMode == AppPrefs.SELECT_FIXED);
-        boolean highlighted = isFixedMode
-                ? item.id.equals(selectedId)
-                : item.id.equals(activeId);
-
-        holder.root.setSelected(highlighted);
-        if (highlighted) {
-            holder.tvBadge.setVisibility(View.VISIBLE);
-            holder.tvBadge.setText(isFixedMode ? "使用中" : "当前轮换");
+        String sizeText = VideoSpecEvaluator.formatSize(item.sizeBytes);
+        if (item.isVideo()) {
+            String tagText = item.durationMs > 0L
+                    ? ("▶ " + VideoSpecEvaluator.formatDuration(item.durationMs))
+                    : "▶ 视频";
+            holder.tvMediaTag.setVisibility(View.VISIBLE);
+            holder.tvMediaTag.setText(tagText);
+            String fpsPart = item.fps > 0f ? (" · " + VideoSpecEvaluator.formatFps(item.fps)) : "";
+            holder.tvMeta.setText(item.width + "×" + item.height + fpsPart + " · " + sizeText);
         } else {
+            holder.tvMediaTag.setVisibility(View.GONE);
+            holder.tvMeta.setText(item.width + "×" + item.height + " · " + sizeText);
+        }
+
+        boolean unavailableInStaticMode = !isLiveMode && item.isVideo();
+        if (unavailableInStaticMode) {
+            holder.ivThumbnail.setAlpha(0.4f);
+            holder.tvDisabledOverlay.setVisibility(View.VISIBLE);
+            holder.root.setSelected(false);
             holder.tvBadge.setVisibility(View.GONE);
+        } else {
+            holder.ivThumbnail.setAlpha(1.0f);
+            holder.tvDisabledOverlay.setVisibility(View.GONE);
+            boolean isFixedMode = (selectionMode == AppPrefs.SELECT_FIXED);
+            boolean highlighted = isFixedMode
+                    ? item.id.equals(selectedId)
+                    : item.id.equals(activeId);
+
+            holder.root.setSelected(highlighted);
+            if (highlighted) {
+                holder.tvBadge.setVisibility(View.VISIBLE);
+                holder.tvBadge.setText(isFixedMode ? "使用中" : "当前轮换");
+            } else {
+                holder.tvBadge.setVisibility(View.GONE);
+            }
         }
 
         holder.root.setOnClickListener(v -> {
@@ -160,7 +182,7 @@ public class WallpaperGridAdapter extends BaseAdapter {
 
         imageView.setImageDrawable(null);
         final boolean darkFlag = isDarkModePage;
-        final File file = WallpaperRepository.getWallpaperFile(context, darkFlag, item.id);
+        final File file = WallpaperRepository.getThumbnailFile(context, darkFlag, item);
         decodeExecutor.execute(() -> {
             Bitmap decoded = WallpaperController.decodeSampledBitmap(file, 480, 300);
             if (decoded != null) {
@@ -178,6 +200,8 @@ public class WallpaperGridAdapter extends BaseAdapter {
         final View root;
         final ImageView ivThumbnail;
         final TextView tvBadge;
+        final TextView tvMediaTag;
+        final TextView tvDisabledOverlay;
         final ImageButton btnDelete;
         final TextView tvName;
         final TextView tvMeta;
@@ -186,6 +210,8 @@ public class WallpaperGridAdapter extends BaseAdapter {
             this.root = view.findViewById(R.id.wallpaperItemRoot);
             this.ivThumbnail = view.findViewById(R.id.ivItemThumbnail);
             this.tvBadge = view.findViewById(R.id.tvItemBadge);
+            this.tvMediaTag = view.findViewById(R.id.tvItemMediaTag);
+            this.tvDisabledOverlay = view.findViewById(R.id.tvItemDisabledOverlay);
             this.btnDelete = view.findViewById(R.id.btnItemDelete);
             this.tvName = view.findViewById(R.id.tvItemName);
             this.tvMeta = view.findViewById(R.id.tvItemMeta);

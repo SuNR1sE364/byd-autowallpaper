@@ -43,12 +43,15 @@ import com.byd.autodarkwallpaper.monitor.VehicleStateMonitor;
 import com.byd.autodarkwallpaper.service.AutoDarkMonitorService;
 import com.byd.autodarkwallpaper.service.AutoDarkWallpaperService;
 import com.byd.autodarkwallpaper.util.AppLogger;
+import com.byd.autodarkwallpaper.wallpaper.VideoSpecEvaluator;
 import com.byd.autodarkwallpaper.wallpaper.WallpaperController;
 import com.byd.autodarkwallpaper.wallpaper.WallpaperRepository;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -140,6 +143,7 @@ public class MainActivity extends Activity {
     private GridView gridWallpapers;
     private View layoutWallpaperEmpty;
     private TextView tvWallpaperEmptyTitle;
+    private TextView tvWallpaperEmptySub;
     private Button btnEmptyAddWallpaper;
 
     // 关于页控件
@@ -401,6 +405,7 @@ public class MainActivity extends Activity {
         gridWallpapers = findViewById(R.id.gridWallpapers);
         layoutWallpaperEmpty = findViewById(R.id.layoutWallpaperEmpty);
         tvWallpaperEmptyTitle = findViewById(R.id.tvWallpaperEmptyTitle);
+        tvWallpaperEmptySub = findViewById(R.id.tvWallpaperEmptySub);
         btnEmptyAddWallpaper = findViewById(R.id.btnEmptyAddWallpaper);
 
         gridAdapter = new WallpaperGridAdapter(this, new WallpaperGridAdapter.ItemActionListener() {
@@ -652,23 +657,28 @@ public class MainActivity extends Activity {
     }
 
     private void refreshHomeWallpaperOverviewAsync() {
+        final boolean isLiveMode = (prefs.getWallpaperMode() == AppPrefs.MODE_LIVE_SERVICE);
         ioExecutor.execute(() -> {
-            final List<WallpaperRepository.WallpaperItem> dayItems =
-                    WallpaperRepository.listWallpapers(MainActivity.this, false);
-            final List<WallpaperRepository.WallpaperItem> nightItems =
-                    WallpaperRepository.listWallpapers(MainActivity.this, true);
+            final List<WallpaperRepository.WallpaperItem> dayAll =
+                    WallpaperRepository.listWallpapers(MainActivity.this, false, true);
+            final List<WallpaperRepository.WallpaperItem> nightAll =
+                    WallpaperRepository.listWallpapers(MainActivity.this, true, true);
+            final List<WallpaperRepository.WallpaperItem> dayEligible =
+                    WallpaperRepository.listWallpapers(MainActivity.this, false, isLiveMode);
+            final List<WallpaperRepository.WallpaperItem> nightEligible =
+                    WallpaperRepository.listWallpapers(MainActivity.this, true, isLiveMode);
             final WallpaperRepository.WallpaperItem dayActive =
-                    WallpaperRepository.getActiveItem(MainActivity.this, false);
+                    WallpaperRepository.getActiveItem(MainActivity.this, false, isLiveMode);
             final WallpaperRepository.WallpaperItem nightActive =
-                    WallpaperRepository.getActiveItem(MainActivity.this, true);
+                    WallpaperRepository.getActiveItem(MainActivity.this, true, isLiveMode);
 
             final Bitmap dayBmp = dayActive != null
                     ? WallpaperController.decodeSampledBitmap(
-                    WallpaperRepository.getWallpaperFile(MainActivity.this, false, dayActive.id), 480, 300)
+                    WallpaperRepository.getThumbnailFile(MainActivity.this, false, dayActive), 480, 300)
                     : null;
             final Bitmap nightBmp = nightActive != null
                     ? WallpaperController.decodeSampledBitmap(
-                    WallpaperRepository.getWallpaperFile(MainActivity.this, true, nightActive.id), 480, 300)
+                    WallpaperRepository.getThumbnailFile(MainActivity.this, true, nightActive), 480, 300)
                     : null;
 
             final int dayMode = prefs.getSelectionMode(false);
@@ -676,34 +686,43 @@ public class MainActivity extends Activity {
 
             runOnUiThread(() -> {
                 bindHomeOverviewCard(
-                        dayItems.size(), dayMode, dayActive, dayBmp,
+                        false, isLiveMode, dayAll.size(), dayEligible.size(), dayMode, dayActive, dayBmp,
                         ivHomeDayPreview, tvHomeDayEmptyHint, tvHomeDayPolicy, tvHomeDayName);
                 bindHomeOverviewCard(
-                        nightItems.size(), nightMode, nightActive, nightBmp,
+                        true, isLiveMode, nightAll.size(), nightEligible.size(), nightMode, nightActive, nightBmp,
                         ivHomeNightPreview, tvHomeNightEmptyHint, tvHomeNightPolicy, tvHomeNightName);
             });
         });
     }
 
-    private void bindHomeOverviewCard(int count, int selectionMode,
+    private void bindHomeOverviewCard(boolean isNight, boolean isLiveMode,
+                                      int totalCount, int eligibleCount, int selectionMode,
                                       WallpaperRepository.WallpaperItem activeItem, Bitmap bmp,
                                       ImageView iv, TextView emptyHint,
                                       TextView tvPolicy, TextView tvName) {
-        if (count == 0 || activeItem == null) {
+        if (eligibleCount == 0 || activeItem == null) {
             iv.setImageDrawable(null);
             emptyHint.setVisibility(View.VISIBLE);
-            tvPolicy.setText("未添加");
-            tvName.setText("点击前往添加壁纸");
+            if (!isLiveMode && totalCount > 0) {
+                emptyHint.setText("仅有视频壁纸\n请添加图片或切动态模式");
+                tvPolicy.setText("仅动态模式可用");
+                tvName.setText("已有 " + totalCount + " 个视频壁纸");
+            } else {
+                emptyHint.setText(isNight ? "尚未添加夜间壁纸\n点击前往上传" : "尚未添加日间壁纸\n点击前往上传");
+                tvPolicy.setText("未添加");
+                tvName.setText("点击前往添加壁纸");
+            }
             return;
         }
         emptyHint.setVisibility(View.GONE);
         iv.setImageBitmap(bmp);
         if (selectionMode == AppPrefs.SELECT_RANDOM) {
-            tvPolicy.setText("随机轮换 · " + count + " 张");
+            tvPolicy.setText("随机轮换 · " + eligibleCount + " 项");
         } else {
-            tvPolicy.setText("指定单张 · " + count + " 张");
+            tvPolicy.setText("指定单项 · " + eligibleCount + " 项");
         }
-        tvName.setText("当前：" + activeItem.displayName);
+        String prefix = activeItem.isVideo() ? "[视频] " : "";
+        tvName.setText("当前：" + prefix + activeItem.displayName);
     }
 
     private void setMasterSwitchCheckedSilently(boolean checked) {
@@ -716,11 +735,29 @@ public class MainActivity extends Activity {
     }
 
     private void handleMasterEnableRequested() {
-        List<WallpaperRepository.WallpaperItem> dayItems = WallpaperRepository.listWallpapers(this, false);
-        List<WallpaperRepository.WallpaperItem> nightItems = WallpaperRepository.listWallpapers(this, true);
+        boolean isLiveMode = (prefs.getWallpaperMode() == AppPrefs.MODE_LIVE_SERVICE);
+        List<WallpaperRepository.WallpaperItem> dayAll = WallpaperRepository.listWallpapers(this, false, true);
+        List<WallpaperRepository.WallpaperItem> nightAll = WallpaperRepository.listWallpapers(this, true, true);
+        List<WallpaperRepository.WallpaperItem> dayEligible = WallpaperRepository.listWallpapers(this, false, isLiveMode);
+        List<WallpaperRepository.WallpaperItem> nightEligible = WallpaperRepository.listWallpapers(this, true, isLiveMode);
 
-        if (dayItems.isEmpty() && nightItems.isEmpty()) {
+        if (dayEligible.isEmpty() && nightEligible.isEmpty()) {
             setMasterSwitchCheckedSilently(false);
+            if (!isLiveMode && (!dayAll.isEmpty() || !nightAll.isEmpty())) {
+                new AlertDialog.Builder(this)
+                        .setTitle("当前仅有视频壁纸")
+                        .setMessage("“直接修改壁纸”模式仅支持静态图片，视频壁纸仅在“动态壁纸模式”下可用。\n\n请添加图片壁纸，或先切换为动态壁纸模式。")
+                        .setPositiveButton("切换为动态模式", (d, w) -> {
+                            prefs.setWallpaperMode(AppPrefs.MODE_LIVE_SERVICE);
+                            renderHomeStatus();
+                            refreshHomeWallpaperOverviewAsync();
+                            proceedEnableWithModeCheck();
+                        })
+                        .setNeutralButton("去添加图片", (d, w) -> selectTab(TAB_WALLPAPER))
+                        .setNegativeButton("取消", null)
+                        .show();
+                return;
+            }
             new AlertDialog.Builder(this)
                     .setTitle("尚未添加壁纸")
                     .setMessage("请先至少添加日间或夜间壁纸，再开启自动切换。")
@@ -730,12 +767,16 @@ public class MainActivity extends Activity {
             return;
         }
 
-        if (dayItems.isEmpty() || nightItems.isEmpty()) {
-            final boolean missingNight = nightItems.isEmpty();
+        if (dayEligible.isEmpty() || nightEligible.isEmpty()) {
+            final boolean missingNight = nightEligible.isEmpty();
             String missingLabel = missingNight ? "夜间" : "日间";
+            boolean onlyHasVideo = !isLiveMode && !(missingNight ? nightAll : dayAll).isEmpty();
+            String detail = onlyHasVideo
+                    ? ("您的" + missingLabel + "壁纸库目前仅有视频，直接修改模式下切换到" + missingLabel + "模式时将保持原样。是否继续开启？")
+                    : ("您尚未添加" + missingLabel + "壁纸，切换到" + missingLabel + "模式时将保持原样。是否继续开启？");
             new AlertDialog.Builder(this)
-                    .setTitle("缺少" + missingLabel + "壁纸")
-                    .setMessage("您尚未添加" + missingLabel + "壁纸，切换到" + missingLabel + "模式时将保持原样。是否继续开启？")
+                    .setTitle("缺少可用" + missingLabel + "壁纸")
+                    .setMessage(detail)
                     .setPositiveButton("仍然开启", (d, w) -> proceedEnableWithModeCheck())
                     .setNeutralButton("去补充", (d, w) -> {
                         setMasterSwitchCheckedSilently(false);
@@ -826,6 +867,8 @@ public class MainActivity extends Activity {
             prefs.setWallpaperMode(targetMode);
             AppLogger.i(TAG, "切换壁纸模式 -> " + AppPrefs.formatWallpaperMode(targetMode) + " (当前未开启)");
             renderHomeStatus();
+            refreshHomeWallpaperOverviewAsync();
+            refreshWallpaperPage();
             return;
         }
 
@@ -864,6 +907,8 @@ public class MainActivity extends Activity {
         prefs.setWallpaperMode(AppPrefs.MODE_STATIC_MANAGER);
         AppLogger.i(TAG, "切换壁纸模式 -> 直接修改壁纸");
         renderHomeStatus();
+        refreshHomeWallpaperOverviewAsync();
+        refreshWallpaperPage();
         AutoDarkMonitorService.notifyConfigUpdated(this);
         Toast.makeText(this, "已切换为直接修改壁纸模式", Toast.LENGTH_SHORT).show();
     }
@@ -872,6 +917,8 @@ public class MainActivity extends Activity {
         prefs.setWallpaperMode(AppPrefs.MODE_LIVE_SERVICE);
         AppLogger.i(TAG, "切换壁纸模式 -> 动态壁纸模式");
         renderHomeStatus();
+        refreshHomeWallpaperOverviewAsync();
+        refreshWallpaperPage();
         AutoDarkMonitorService.notifyConfigUpdated(this);
         Toast.makeText(this, toastMsg, Toast.LENGTH_SHORT).show();
     }
@@ -961,8 +1008,9 @@ public class MainActivity extends Activity {
     }
 
     private void refreshWallpaperPage() {
-        List<WallpaperRepository.WallpaperItem> dayItems = WallpaperRepository.listWallpapers(this, false);
-        List<WallpaperRepository.WallpaperItem> nightItems = WallpaperRepository.listWallpapers(this, true);
+        boolean isLiveMode = (prefs.getWallpaperMode() == AppPrefs.MODE_LIVE_SERVICE);
+        List<WallpaperRepository.WallpaperItem> dayItems = WallpaperRepository.listWallpapers(this, false, true);
+        List<WallpaperRepository.WallpaperItem> nightItems = WallpaperRepository.listWallpapers(this, true, true);
 
         tabWallpaperDay.setText("日间壁纸 (" + dayItems.size() + ")");
         tabWallpaperNight.setText("夜间壁纸 (" + nightItems.size() + ")");
@@ -975,9 +1023,19 @@ public class MainActivity extends Activity {
         styleSegmentedTab(tabStrategyRandom, isRandom);
 
         if (isRandom) {
-            tvWallpaperStrategyDesc.setText("在当前多张壁纸中随机轮换（日夜切换及车机重启时自动换图）");
+            tvWallpaperStrategyDesc.setText(isLiveMode
+                    ? "在当前壁纸中随机轮换（日夜切换及车机重启时自动换图/换视频）"
+                    : "在当前可用图片壁纸中随机轮换（日夜切换及车机重启时自动换图）");
         } else {
-            tvWallpaperStrategyDesc.setText("点击下方壁纸设为指定使用，再次点击可查看大图预览");
+            tvWallpaperStrategyDesc.setText("点击下方壁纸设为指定使用，再次点击可查看预览与详情");
+        }
+
+        if (isLiveMode) {
+            tvWallpaperEmptySub.setText("支持一次选择多张图片或视频，可在固定使用与随机轮换之间自由切换");
+            btnEmptyAddWallpaper.setText("选择图片或视频");
+        } else {
+            tvWallpaperEmptySub.setText("支持一次选择多张图片（切换为“动态壁纸模式”后可添加视频壁纸）");
+            btnEmptyAddWallpaper.setText("选择图片上传");
         }
 
         List<WallpaperRepository.WallpaperItem> activeList = editingNight ? nightItems : dayItems;
@@ -992,7 +1050,7 @@ public class MainActivity extends Activity {
 
         String selectedId = prefs.getSelectedWallpaperId(editingNight);
         String activeId = prefs.getActiveWallpaperId(editingNight);
-        gridAdapter.updateData(activeList, editingNight, selectionMode, selectedId, activeId);
+        gridAdapter.updateData(activeList, editingNight, selectionMode, selectedId, activeId, isLiveMode);
     }
 
     private void styleSegmentedTab(TextView tab, boolean selected) {
@@ -1020,7 +1078,19 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void handleWallpaperItemClicked(WallpaperRepository.WallpaperItem item) {
+    private void handleWallpaperItemClicked(final WallpaperRepository.WallpaperItem item) {
+        boolean isLiveMode = (prefs.getWallpaperMode() == AppPrefs.MODE_LIVE_SERVICE);
+        if (!isLiveMode && item.isVideo()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("仅动态壁纸模式可用")
+                    .setMessage("“" + item.displayName + "”是视频壁纸，当前“直接修改壁纸”模式仅支持静态图片。\n\n您可以切换为“动态壁纸模式”后使用，或查看详情/删除。")
+                    .setPositiveButton("切换为动态模式", (d, w) -> handleModeSwitchRequested(AppPrefs.MODE_LIVE_SERVICE))
+                    .setNeutralButton("查看详情", (d, w) -> showWallpaperPreviewDialog(item))
+                    .setNegativeButton("取消", null)
+                    .show();
+            return;
+        }
+
         int selectionMode = prefs.getSelectionMode(editingNight);
         String currentSelected = prefs.getSelectedWallpaperId(editingNight);
 
@@ -1045,8 +1115,8 @@ public class MainActivity extends Activity {
     }
 
     private void showWallpaperPreviewDialog(final WallpaperRepository.WallpaperItem item) {
-        File file = WallpaperRepository.getWallpaperFile(this, editingNight, item.id);
-        Bitmap preview = WallpaperController.decodeSampledBitmap(file, 1280, 800);
+        File thumbFile = WallpaperRepository.getThumbnailFile(this, editingNight, item);
+        Bitmap preview = WallpaperController.decodeSampledBitmap(thumbFile, 1280, 800);
 
         LinearLayout container = new LinearLayout(this);
         container.setOrientation(LinearLayout.VERTICAL);
@@ -1066,7 +1136,24 @@ public class MainActivity extends Activity {
 
         TextView tvInfo = new TextView(this);
         tvInfo.setPadding(0, dpToPx(10), 0, 0);
-        tvInfo.setText(item.displayName + "\n分辨率：" + item.width + " × " + item.height);
+        StringBuilder info = new StringBuilder();
+        info.append(item.displayName);
+        if (item.isVideo()) {
+            info.append("\n类型：视频壁纸（仅动态壁纸模式可用）");
+            info.append("\n分辨率：").append(item.width).append(" × ").append(item.height);
+            if (item.durationMs > 0L) {
+                info.append("\n时长：").append(VideoSpecEvaluator.formatDuration(item.durationMs));
+            }
+            if (item.fps > 0f) {
+                info.append("\n帧率：").append(VideoSpecEvaluator.formatFps(item.fps));
+            }
+            info.append("\n大小：").append(VideoSpecEvaluator.formatSize(item.sizeBytes));
+        } else {
+            info.append("\n类型：静态图片");
+            info.append("\n分辨率：").append(item.width).append(" × ").append(item.height);
+            info.append("\n大小：").append(VideoSpecEvaluator.formatSize(item.sizeBytes));
+        }
+        tvInfo.setText(info.toString());
         tvInfo.setTextSize(13f);
         container.addView(tvInfo);
 
@@ -1076,7 +1163,8 @@ public class MainActivity extends Activity {
                 .setPositiveButton("关闭", null)
                 .setNegativeButton("删除此壁纸", (d, w) -> confirmDeleteWallpaper(item));
 
-        if (prefs.getSelectionMode(editingNight) == AppPrefs.SELECT_RANDOM) {
+        boolean isLiveMode = (prefs.getWallpaperMode() == AppPrefs.MODE_LIVE_SERVICE);
+        if (prefs.getSelectionMode(editingNight) == AppPrefs.SELECT_RANDOM && (isLiveMode || !item.isVideo())) {
             builder.setNeutralButton("改用指定此壁纸", (d, w) -> {
                 prefs.setSelectionMode(editingNight, AppPrefs.SELECT_FIXED);
                 prefs.setSelectedWallpaperId(editingNight, item.id);
@@ -1124,14 +1212,20 @@ public class MainActivity extends Activity {
 
     private void launchWallpaperPicker() {
         try {
+            boolean isLiveMode = (prefs.getWallpaperMode() == AppPrefs.MODE_LIVE_SERVICE);
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("image/*");
+            if (isLiveMode) {
+                intent.setType("*/*");
+                intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/*", "video/*"});
+            } else {
+                intent.setType("image/*");
+            }
             intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
             startActivityForResult(intent, REQ_PICK_WALLPAPERS);
         } catch (Throwable t) {
-            AppLogger.e(TAG, "打开系统图片选择器失败", t);
-            Toast.makeText(this, "无法打开图片选择器: " + t.getMessage(), Toast.LENGTH_LONG).show();
+            AppLogger.e(TAG, "打开系统文件选择器失败", t);
+            Toast.makeText(this, "无法打开文件选择器: " + t.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
@@ -1372,31 +1466,24 @@ public class MainActivity extends Activity {
                 return;
             }
             final boolean targetNight = editingNight;
-            Toast.makeText(this, "正在导入 " + uris.size() + " 张图片...", Toast.LENGTH_SHORT).show();
+            final boolean allowVideo = (prefs.getWallpaperMode() == AppPrefs.MODE_LIVE_SERVICE);
+            if (!allowVideo) {
+                performImportUris(uris, targetNight, false);
+                return;
+            }
             ioExecutor.execute(() -> {
-                try {
-                    WallpaperRepository.ImportResult res =
-                            WallpaperRepository.importWallpapersFromUris(MainActivity.this, uris, targetNight);
-                    runOnUiThread(() -> {
-                        refreshWallpaperPage();
-                        refreshHomeWallpaperOverviewAsync();
-                        if (prefs.isEnabled() && isSystemNightNow() == targetNight) {
-                            WallpaperController.resetDedupState();
-                            AutoDarkMonitorService.notifyConfigUpdated(MainActivity.this);
-                        } else {
-                            WallpaperController.notifyLibraryChanged(MainActivity.this);
-                        }
-                        String msg = "已导入 " + res.importedItems.size() + " 张" + (targetNight ? "夜间" : "日间") + "壁纸";
-                        if (!res.errorMessages.isEmpty()) {
-                            msg += "（" + res.errorMessages.size() + " 张导入失败）";
-                        }
-                        Toast.makeText(MainActivity.this, msg, Toast.LENGTH_LONG).show();
-                    });
-                } catch (Throwable t) {
-                    AppLogger.e(TAG, "导入壁纸失败", t);
-                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
-                            "导入失败: " + t.getMessage(), Toast.LENGTH_LONG).show());
-                }
+                final List<WallpaperRepository.VideoInspection> highSpecWarnings =
+                        WallpaperRepository.inspectHighSpecVideos(MainActivity.this, uris);
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) {
+                        return;
+                    }
+                    if (highSpecWarnings.isEmpty()) {
+                        performImportUris(uris, targetNight, true);
+                    } else {
+                        showHighSpecVideoWarningDialog(uris, highSpecWarnings, targetNight);
+                    }
+                });
             });
             return;
         }
@@ -1446,6 +1533,68 @@ public class MainActivity extends Activity {
                 }
             });
         }
+    }
+
+    private void showHighSpecVideoWarningDialog(final List<Uri> allUris,
+                                                final List<WallpaperRepository.VideoInspection> warnings,
+                                                final boolean targetNight) {
+        StringBuilder msg = new StringBuilder();
+        msg.append("检测到以下视频满足 2 项及以上高规格条件（分辨率 ≥2K、帧率 >60fps、时长 ≥60秒、体积 >100MB），在车机长期桌面循环播放可能增加发热或资源占用：\n\n");
+        Set<Uri> warnedUris = new HashSet<>();
+        for (WallpaperRepository.VideoInspection item : warnings) {
+            warnedUris.add(item.uri);
+            msg.append("• ").append(item.displayName).append("\n");
+            for (String reason : item.specResult.triggeredReasons) {
+                msg.append("   - ").append(reason).append("\n");
+            }
+            msg.append("\n");
+        }
+
+        final List<Uri> normalUris = new ArrayList<>();
+        for (Uri uri : allUris) {
+            if (uri != null && !warnedUris.contains(uri)) {
+                normalUris.add(uri);
+            }
+        }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle("高规格视频提示")
+                .setMessage(msg.toString().trim())
+                .setPositiveButton("仍然导入", (d, w) -> performImportUris(allUris, targetNight, true))
+                .setNegativeButton("取消", null);
+        if (!normalUris.isEmpty()) {
+            builder.setNeutralButton("跳过高规格视频", (d, w) -> performImportUris(normalUris, targetNight, true));
+        }
+        builder.show();
+    }
+
+    private void performImportUris(final List<Uri> uris, final boolean targetNight, final boolean allowVideo) {
+        Toast.makeText(this, "正在导入 " + uris.size() + " 个壁纸文件...", Toast.LENGTH_SHORT).show();
+        ioExecutor.execute(() -> {
+            try {
+                WallpaperRepository.ImportResult res =
+                        WallpaperRepository.importWallpapersFromUris(MainActivity.this, uris, targetNight, allowVideo);
+                runOnUiThread(() -> {
+                    refreshWallpaperPage();
+                    refreshHomeWallpaperOverviewAsync();
+                    if (prefs.isEnabled() && isSystemNightNow() == targetNight) {
+                        WallpaperController.resetDedupState();
+                        AutoDarkMonitorService.notifyConfigUpdated(MainActivity.this);
+                    } else {
+                        WallpaperController.notifyLibraryChanged(MainActivity.this);
+                    }
+                    String msg = "已导入 " + res.importedItems.size() + " 项" + (targetNight ? "夜间" : "日间") + "壁纸";
+                    if (!res.errorMessages.isEmpty()) {
+                        msg += "（" + res.errorMessages.size() + " 项导入失败）";
+                    }
+                    Toast.makeText(MainActivity.this, msg, Toast.LENGTH_LONG).show();
+                });
+            } catch (Throwable t) {
+                AppLogger.e(TAG, "导入壁纸失败", t);
+                runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                        "导入失败: " + t.getMessage(), Toast.LENGTH_LONG).show());
+            }
+        });
     }
 
     private List<Uri> extractSelectedUris(Intent data) {

@@ -119,6 +119,49 @@ public class WallpaperControllerTest {
         assertEquals(2, shadowApp.getBroadcastIntents().size());
     }
 
+    @Test
+    public void applyWallpaper_staticMode_withOnlyVideos_notifiesSpecificError() throws Exception {
+        WallpaperRepository.addVideoItemForTest(
+                app, false, "仅视频测试", ".mp4", 1920, 1080, 12_000L, 30f, 0);
+        prefs.setWallpaperMode(AppPrefs.MODE_STATIC_MANAGER);
+
+        AtomicReference<String> statusText = new AtomicReference<>();
+        AtomicBoolean statusError = new AtomicBoolean(false);
+        WallpaperController.ApplyStatusListener listener = (text, isError) -> {
+            statusText.set(text);
+            statusError.set(isError);
+        };
+
+        WallpaperController.addApplyStatusListener(listener);
+        try {
+            WallpaperController.applyWallpaper(app, false, "测试仅视频", false, false);
+            ShadowLooper.idleMainLooper();
+
+            assertTrue(statusError.get());
+            assertNotNull(statusText.get());
+            assertTrue(statusText.get().contains("仅有视频"));
+        } finally {
+            WallpaperController.removeApplyStatusListener(listener);
+        }
+    }
+
+    @Test
+    public void applyWallpaper_liveMode_withVideo_broadcastsVideoItemId() throws Exception {
+        WallpaperRepository.WallpaperItem video = WallpaperRepository.addVideoItemForTest(
+                app, true, "夜间视频", ".mp4", 1920, 1080, 15_000L, 60f, 0);
+
+        prefs.setWallpaperMode(AppPrefs.MODE_LIVE_SERVICE);
+        ShadowApplication shadowApp = Shadow.extract(app);
+        shadowApp.clearBroadcastIntents();
+
+        WallpaperController.applyWallpaper(app, true, "测试视频切换", false, false);
+        List<Intent> broadcasts = shadowApp.getBroadcastIntents();
+        assertEquals(1, broadcasts.size());
+        assertEquals(WallpaperController.ACTION_WALLPAPER_STATE_CHANGED, broadcasts.get(0).getAction());
+        assertEquals(video.id, broadcasts.get(0).getStringExtra(WallpaperController.EXTRA_ITEM_ID));
+        assertTrue(broadcasts.get(0).getBooleanExtra(WallpaperController.EXTRA_IS_DARK, false));
+    }
+
     private void writeJpeg(File file, int width, int height, int color) throws IOException {
         Bitmap bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         bmp.eraseColor(color);

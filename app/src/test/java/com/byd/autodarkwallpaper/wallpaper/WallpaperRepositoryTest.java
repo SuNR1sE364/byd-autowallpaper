@@ -26,6 +26,7 @@ import org.robolectric.annotation.Config;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -154,6 +155,96 @@ public class WallpaperRepositoryTest {
         assertEquals(1, dayItems.size());
         assertEquals("日间壁纸", dayItems.get(0).displayName);
         assertEquals(dayItems.get(0).id, prefs.getSelectedWallpaperId(false));
+    }
+
+    @Test
+    public void legacyLibraryJson_defaultsToImageTypeAndJpgFile() throws Exception {
+        File dayDir = new File(WallpaperRepository.getRootDir(context), "day");
+        assertTrue(dayDir.mkdirs() || dayDir.exists());
+        writeJpeg(new File(dayDir, "legacy_1.jpg"), 320, 200, Color.GREEN);
+
+        String legacyJson = "{\n"
+                + "  \"day\": [{\n"
+                + "    \"id\": \"legacy_1\",\n"
+                + "    \"displayName\": \"旧版壁纸\",\n"
+                + "    \"width\": 320,\n"
+                + "    \"height\": 200,\n"
+                + "    \"sizeBytes\": 1024,\n"
+                + "    \"addedAt\": 123456\n"
+                + "  }],\n"
+                + "  \"night\": []\n"
+                + "}";
+        File libFile = new File(WallpaperRepository.getRootDir(context), "library.json");
+        try (FileOutputStream fos = new FileOutputStream(libFile)) {
+            fos.write(legacyJson.getBytes(StandardCharsets.UTF_8));
+        }
+
+        List<WallpaperRepository.WallpaperItem> items = WallpaperRepository.listWallpapers(context, false);
+        assertEquals(1, items.size());
+        WallpaperRepository.WallpaperItem item = items.get(0);
+        assertFalse(item.isVideo());
+        assertEquals(WallpaperRepository.WallpaperItem.MEDIA_TYPE_IMAGE, item.mediaType);
+        assertEquals("legacy_1.jpg", item.fileName);
+    }
+
+    @Test
+    public void videoItem_filtersInStaticMode_preservesSelection_andDeletesThumb() throws Exception {
+        WallpaperRepository.WallpaperItem video = WallpaperRepository.addVideoItemForTest(
+                context, false, "测试视频", ".mp4", 1920, 1080, 18_500L, 60f, 0);
+
+        File videoFile = WallpaperRepository.getWallpaperFile(context, false, video);
+        File thumbFile = WallpaperRepository.getThumbnailFile(context, false, video);
+        assertNotNull(videoFile);
+        assertNotNull(thumbFile);
+        assertTrue(videoFile.exists());
+        assertTrue(thumbFile.exists());
+        assertTrue(video.isVideo());
+
+        // 动态模式列表包含视频，静态模式列表过滤视频
+        assertEquals(1, WallpaperRepository.listWallpapers(context, false, true).size());
+        assertTrue(WallpaperRepository.listWallpapers(context, false, false).isEmpty());
+        assertNull(WallpaperRepository.getActiveItem(context, false, false));
+
+        // 额外导入一张静态图片，并将动态模式固定选中保持在视频上
+        Uri imgUri = createTempImageUri("day_img.jpg", 320, 200, Color.BLUE);
+        WallpaperRepository.ImportResult imgRes =
+                WallpaperRepository.importWallpapersFromUris(context, Collections.singletonList(imgUri), false, true);
+        String imgId = imgRes.importedItems.get(0).id;
+        prefs.setSelectionMode(false, AppPrefs.SELECT_FIXED);
+        prefs.setSelectedWallpaperId(false, video.id);
+
+        // 静态模式解析时应回落到图片，且不覆盖用户动态模式下选中的视频 ID
+        WallpaperRepository.WallpaperItem staticApplied =
+                WallpaperRepository.resolveItemForApply(context, false, false, false);
+        assertNotNull(staticApplied);
+        assertEquals(imgId, staticApplied.id);
+        assertEquals(video.id, prefs.getSelectedWallpaperId(false));
+
+        // 切回动态模式时无损恢复视频壁纸
+        WallpaperRepository.WallpaperItem liveApplied =
+                WallpaperRepository.resolveItemForApply(context, false, false, true);
+        assertNotNull(liveApplied);
+        assertEquals(video.id, liveApplied.id);
+
+        // 删除视频应同时清理主文件与缩略图
+        assertTrue(WallpaperRepository.deleteWallpaper(context, false, video.id));
+        assertFalse(videoFile.exists());
+        assertFalse(thumbFile.exists());
+    }
+
+    @Test
+    public void importWallpapers_staticModeRejectsVideoUri() throws Exception {
+        File mp4 = tempFolder.newFile("sample_clip.mp4");
+        try (FileOutputStream fos = new FileOutputStream(mp4)) {
+            fos.write(new byte[]{0, 0, 0, 8});
+        }
+        try {
+            WallpaperRepository.importWallpapersFromUris(
+                    context, Collections.singletonList(Uri.fromFile(mp4)), false, false);
+            org.junit.Assert.fail("静态模式下应拒绝导入视频");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("动态壁纸模式"));
+        }
     }
 
     private Uri createTempImageUri(String name, int width, int height, int color) throws IOException {
