@@ -14,9 +14,6 @@ on:
 permissions:
   contents: write
 
-env:
-  GRADLE_OPTS: "-Dhttp.proxyHost= -Dhttp.proxyPort= -Dhttps.proxyHost= -Dhttps.proxyPort="
-
 jobs:
   release:
     name: Build & Publish Release APK

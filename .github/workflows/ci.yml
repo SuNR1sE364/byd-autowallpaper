@@ -15,9 +15,6 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  GRADLE_OPTS: "-Dhttp.proxyHost= -Dhttp.proxyPort= -Dhttps.proxyHost= -Dhttps.proxyPort="
-
 jobs:
   build-and-test:
     name: Build, Lint & Unit Test
