@@ -121,26 +121,26 @@ public class WallpaperGridAdapter extends BaseAdapter {
         String sizeText = VideoSpecEvaluator.formatSize(item.sizeBytes);
         if (item.isVideo()) {
             String tagText = item.durationMs > 0L
-                    ? ("▶ " + VideoSpecEvaluator.formatDuration(item.durationMs))
-                    : "▶ 视频";
-            holder.tvMediaTag.setVisibility(View.VISIBLE);
+                    ? VideoSpecEvaluator.formatDuration(item.durationMs)
+                    : "视频";
+            holder.layoutMediaTag.setVisibility(View.VISIBLE);
             holder.tvMediaTag.setText(tagText);
             String fpsPart = item.fps > 0f ? (" · " + VideoSpecEvaluator.formatFps(item.fps)) : "";
             holder.tvMeta.setText(item.width + "×" + item.height + fpsPart + " · " + sizeText);
         } else {
-            holder.tvMediaTag.setVisibility(View.GONE);
+            holder.layoutMediaTag.setVisibility(View.GONE);
             holder.tvMeta.setText(item.width + "×" + item.height + " · " + sizeText);
         }
 
         boolean unavailableInStaticMode = !isLiveMode && item.isVideo();
         if (unavailableInStaticMode) {
             holder.ivThumbnail.setAlpha(0.4f);
-            holder.tvDisabledOverlay.setVisibility(View.VISIBLE);
+            holder.layoutDisabledOverlay.setVisibility(View.VISIBLE);
             holder.root.setSelected(false);
-            holder.tvBadge.setVisibility(View.GONE);
+            holder.layoutBadge.setVisibility(View.GONE);
         } else {
             holder.ivThumbnail.setAlpha(1.0f);
-            holder.tvDisabledOverlay.setVisibility(View.GONE);
+            holder.layoutDisabledOverlay.setVisibility(View.GONE);
             boolean isFixedMode = (selectionMode == AppPrefs.SELECT_FIXED);
             boolean highlighted = isFixedMode
                     ? item.id.equals(selectedId)
@@ -148,10 +148,12 @@ public class WallpaperGridAdapter extends BaseAdapter {
 
             holder.root.setSelected(highlighted);
             if (highlighted) {
-                holder.tvBadge.setVisibility(View.VISIBLE);
-                holder.tvBadge.setText(isFixedMode ? "使用中" : "当前轮换");
+                holder.layoutBadge.setVisibility(View.VISIBLE);
+                holder.ivBadgeIcon.setImageResource(
+                        isFixedMode ? R.drawable.ic_check_circle : R.drawable.ic_strategy_random);
+                holder.tvBadge.setText(isFixedMode ? "使用中" : "轮换中");
             } else {
-                holder.tvBadge.setVisibility(View.GONE);
+                holder.layoutBadge.setVisibility(View.GONE);
             }
         }
 
@@ -199,9 +201,12 @@ public class WallpaperGridAdapter extends BaseAdapter {
     private static final class ViewHolder {
         final View root;
         final ImageView ivThumbnail;
+        final View layoutBadge;
+        final ImageView ivBadgeIcon;
         final TextView tvBadge;
+        final View layoutMediaTag;
         final TextView tvMediaTag;
-        final TextView tvDisabledOverlay;
+        final View layoutDisabledOverlay;
         final ImageButton btnDelete;
         final TextView tvName;
         final TextView tvMeta;
@@ -209,9 +214,12 @@ public class WallpaperGridAdapter extends BaseAdapter {
         ViewHolder(View view, final float cornerRadiusPx) {
             this.root = view.findViewById(R.id.wallpaperItemRoot);
             this.ivThumbnail = view.findViewById(R.id.ivItemThumbnail);
+            this.layoutBadge = view.findViewById(R.id.layoutItemBadge);
+            this.ivBadgeIcon = view.findViewById(R.id.ivItemBadgeIcon);
             this.tvBadge = view.findViewById(R.id.tvItemBadge);
+            this.layoutMediaTag = view.findViewById(R.id.layoutItemMediaTag);
             this.tvMediaTag = view.findViewById(R.id.tvItemMediaTag);
-            this.tvDisabledOverlay = view.findViewById(R.id.tvItemDisabledOverlay);
+            this.layoutDisabledOverlay = view.findViewById(R.id.layoutItemDisabledOverlay);
             this.btnDelete = view.findViewById(R.id.btnItemDelete);
             this.tvName = view.findViewById(R.id.tvItemName);
             this.tvMeta = view.findViewById(R.id.tvItemMeta);

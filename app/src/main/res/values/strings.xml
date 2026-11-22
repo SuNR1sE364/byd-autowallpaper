@@ -2,9 +2,8 @@
 <resources>
     <string name="app_name">深浅壁纸</string>
     <string name="app_display_name">自动深浅壁纸</string>
-    <string name="app_tagline">跟随车机日夜模式，自动切换日间与夜间桌面壁纸</string>
     <string name="live_wallpaper_name">自动深浅动态壁纸</string>
-    <string name="live_wallpaper_description">跟随车机系统深浅色模式自动切换日间与夜间壁纸（支持图片与视频），支持淡入淡出过渡与多壁纸随机轮换</string>
+    <string name="live_wallpaper_description">跟随车机日夜模式自动切换日间与夜间壁纸（支持图片与视频）</string>
 
     <string name="nav_home">主页</string>
     <string name="nav_wallpaper">壁纸</string>
@@ -12,26 +11,41 @@
 
     <string name="home_title">主页</string>
     <string name="home_master_title">自动深浅壁纸</string>
-    <string name="home_mode_section_title">壁纸切换模式</string>
+    <string name="home_mode_section_title">切换模式</string>
     <string name="home_mode_static_title">直接修改壁纸</string>
-    <string name="home_mode_static_desc">直接替换系统桌面静态壁纸。开启前会自动备份当前壁纸，关闭后自动复原。</string>
     <string name="home_mode_live_title">动态壁纸模式</string>
-    <string name="home_mode_live_desc">通过系统动态壁纸引擎渐变切换（支持图片与视频壁纸），无需反复刷写桌面壁纸，过渡自然平滑。</string>
-    <string name="btn_activate_live_wallpaper">前往系统激活</string>
+    <string name="btn_activate_live_wallpaper">去激活</string>
     <string name="home_preview_section_title">壁纸概览</string>
 
+    <string name="tag_image">图片</string>
+    <string name="tag_video">视频</string>
+    <string name="tag_backup">自动备份</string>
+    <string name="tag_fade">渐变</string>
+
     <string name="wallpaper_title">壁纸</string>
-    <string name="btn_add_wallpaper">+ 添加壁纸</string>
-    <string name="wallpaper_strategy_title">切换方式</string>
-    <string name="wallpaper_strategy_fixed">使用指定壁纸</string>
-    <string name="wallpaper_strategy_random">随机轮换</string>
+    <string name="btn_add_wallpaper">添加</string>
+    <string name="wallpaper_strategy_fixed">指定</string>
+    <string name="wallpaper_strategy_random">随机</string>
 
     <string name="about_title">关于</string>
-    <string name="about_debug_title">调试模式</string>
-    <string name="about_debug_desc">开启后展示实时运行日志与日志导出功能，用于排查问题。</string>
+    <string name="about_help_entry">功能与使用说明</string>
+    <string name="about_debug_title">调试日志</string>
+    <string name="about_console_title">运行日志</string>
 
-    <string name="btn_set_log_path">设置保存位置</string>
-    <string name="btn_copy_logs">复制日志</string>
-    <string name="btn_export_logs">导出文件</string>
-    <string name="btn_clear_logs">清空日志</string>
+    <string name="btn_set_log_path">目录</string>
+    <string name="btn_copy_logs">复制</string>
+    <string name="btn_export_logs">导出</string>
+    <string name="btn_clear_logs">清空</string>
+
+    <string name="info_menu_title">功能说明</string>
+    <string name="info_section_auto_title">自动触发与备份</string>
+    <string name="info_section_auto_body">实时跟随车机日/夜模式自动切换壁纸，开机与上电自启跟随主页总开关。</string>
+    <string name="info_section_static_title">直接修改壁纸</string>
+    <string name="info_section_static_body">直接替换系统桌面静态壁纸（仅支持图片）。开启前自动备份当前壁纸，关闭开关后自动复原。</string>
+    <string name="info_section_live_title">动态壁纸模式</string>
+    <string name="info_section_live_body">通过动态壁纸引擎渐变切换，支持图片与视频。</string>
+    <string name="info_section_library_title">壁纸管理与视频规格</string>
+    <string name="info_section_library_body">支持多选导入；日间与夜间可分别设为「指定」或「随机」。</string>
+    <string name="info_section_debug_title">调试日志</string>
+    <string name="info_section_debug_body">在「关于」页开启调试日志后，可实时查看运行记录、切换日志目录、复制或导出至 U 盘。</string>
 </resources>

@@ -13,16 +13,36 @@
         android:orientation="vertical"
         android:padding="@dimen/page_padding">
 
-        <TextView
-            android:layout_width="wrap_content"
+        <!-- 顶部标题栏 -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="18dp"
-            android:text="@string/about_title"
-            android:textColor="@color/text_primary"
-            android:textSize="24sp"
-            android:textStyle="bold" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <!-- 卡片 1：应用信息 -->
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/about_title"
+                android:textColor="@color/text_primary"
+                android:textSize="24sp"
+                android:textStyle="bold" />
+
+            <ImageButton
+                android:id="@+id/btnAboutInfo"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:background="@drawable/bg_btn_icon_circle"
+                android:contentDescription="@string/info_menu_title"
+                android:padding="9dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_info_alert"
+                android:tint="@color/text_secondary" />
+        </LinearLayout>
+
+        <!-- 卡片 1：应用身份 + 设备信息 + 集中说明入口 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -38,15 +58,15 @@
                 android:orientation="horizontal">
 
                 <ImageView
-                    android:layout_width="56dp"
-                    android:layout_height="56dp"
+                    android:layout_width="52dp"
+                    android:layout_height="52dp"
                     android:contentDescription="@string/app_display_name"
                     android:src="@drawable/ic_app_launcher" />
 
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="16dp"
+                    android:layout_marginStart="14dp"
                     android:layout_weight="1"
                     android:orientation="vertical">
 
@@ -55,7 +75,7 @@
                         android:layout_height="wrap_content"
                         android:text="@string/app_display_name"
                         android:textColor="@color/text_primary"
-                        android:textSize="20sp"
+                        android:textSize="19sp"
                         android:textStyle="bold" />
 
                     <TextView
@@ -63,19 +83,15 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
-                        android:text="版本 v2.0.0"
+                        android:background="@drawable/bg_pill_status"
+                        android:paddingHorizontal="10dp"
+                        android:paddingVertical="3dp"
+                        android:text="v2.0.0"
                         android:textColor="@color/text_secondary"
-                        android:textSize="13sp" />
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
                 </LinearLayout>
             </LinearLayout>
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:text="@string/app_tagline"
-                android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
 
             <View
                 android:layout_width="match_parent"
@@ -83,74 +99,71 @@
                 android:layout_marginVertical="14dp"
                 android:background="@color/divider" />
 
+            <!-- 运行设备 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="8dp"
+                android:layout_marginBottom="10dp"
+                android:gravity="center_vertical"
                 android:orientation="horizontal">
 
-                <TextView
-                    android:layout_width="110dp"
-                    android:layout_height="wrap_content"
-                    android:text="触发方式"
-                    android:textColor="@color/text_muted"
-                    android:textSize="13sp" />
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="跟随比亚迪车机日夜模式"
-                    android:textColor="@color/text_primary"
-                    android:textSize="13sp" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="8dp"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="110dp"
-                    android:layout_height="wrap_content"
-                    android:text="切换模式"
-                    android:textColor="@color/text_muted"
-                    android:textSize="13sp" />
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="直接修改壁纸（支持原壁纸备份复原） / 动态壁纸引擎"
-                    android:textColor="@color/text_primary"
-                    android:textSize="13sp" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="110dp"
-                    android:layout_height="wrap_content"
-                    android:text="运行设备"
-                    android:textColor="@color/text_muted"
-                    android:textSize="13sp" />
+                <ImageView
+                    android:layout_width="17dp"
+                    android:layout_height="17dp"
+                    android:contentDescription="运行设备"
+                    android:src="@drawable/ic_device"
+                    android:tint="@color/text_muted" />
 
                 <TextView
                     android:id="@+id/tvAboutDeviceInfo"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
                     android:layout_weight="1"
                     android:text="Android"
-                    android:textColor="@color/text_primary"
+                    android:textColor="@color/text_secondary"
                     android:textSize="13sp" />
+            </LinearLayout>
+
+            <!-- 集中功能说明入口 -->
+            <LinearLayout
+                android:id="@+id/rowAboutHelp"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:background="@drawable/bg_info_section"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingHorizontal="12dp">
+
+                <ImageView
+                    android:layout_width="17dp"
+                    android:layout_height="17dp"
+                    android:contentDescription="@string/about_help_entry"
+                    android:src="@drawable/ic_info_alert"
+                    android:tint="@color/accent_primary" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:layout_weight="1"
+                    android:text="@string/about_help_entry"
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:contentDescription="展开说明"
+                    android:src="@drawable/ic_chevron_right"
+                    android:tint="@color/text_muted" />
             </LinearLayout>
         </LinearLayout>
 
-        <!-- 卡片 2：调试模式开关 -->
+        <!-- 卡片 2：调试日志开关（移除描述性副标题，开启即展开控制台） -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -160,29 +173,31 @@
             android:orientation="horizontal"
             android:padding="@dimen/card_padding">
 
-            <LinearLayout
+            <FrameLayout
+                android:id="@+id/boxDebugIcon"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="@drawable/bg_icon_badge">
+
+                <ImageView
+                    android:id="@+id/ivDebugIcon"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="center"
+                    android:contentDescription="@string/about_debug_title"
+                    android:src="@drawable/ic_terminal"
+                    android:tint="@color/text_secondary" />
+            </FrameLayout>
+
+            <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
+                android:layout_marginHorizontal="14dp"
                 android:layout_weight="1"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/about_debug_title"
-                    android:textColor="@color/text_primary"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="@string/about_debug_desc"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="13sp" />
-            </LinearLayout>
+                android:text="@string/about_debug_title"
+                android:textColor="@color/text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold" />
 
             <Switch
                 android:id="@+id/switchDebugMode"
@@ -195,7 +210,7 @@
                 android:track="@drawable/switch_track" />
         </LinearLayout>
 
-        <!-- 卡片 3：调试日志控制台（仅在开启调试模式时显示） -->
+        <!-- 卡片 3：调试日志控制台（仅开启调试日志时展示） -->
         <LinearLayout
             android:id="@+id/cardDebugConsole"
             android:layout_width="match_parent"
@@ -208,7 +223,7 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="10dp"
+                android:layout_marginBottom="12dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
@@ -216,69 +231,163 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="实时运行日志"
+                    android:text="@string/about_console_title"
                     android:textColor="@color/text_primary"
                     android:textSize="16sp"
                     android:textStyle="bold" />
 
-                <Button
+                <LinearLayout
                     android:id="@+id/btnSetLogPath"
                     android:layout_width="wrap_content"
-                    android:layout_height="36dp"
+                    android:layout_height="34dp"
                     android:layout_marginEnd="6dp"
                     android:background="@drawable/bg_btn_native_primary"
-                    android:paddingHorizontal="12dp"
-                    android:text="@string/btn_set_log_path"
-                    android:textAllCaps="false"
-                    android:textColor="#FFFFFF"
-                    android:textSize="12sp" />
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="11dp">
 
-                <Button
+                    <ImageView
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:contentDescription="@string/btn_set_log_path"
+                        android:src="@drawable/ic_folder"
+                        android:tint="#FFFFFF" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="5dp"
+                        android:text="@string/btn_set_log_path"
+                        android:textColor="#FFFFFF"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <LinearLayout
                     android:id="@+id/btnCopyLogs"
                     android:layout_width="wrap_content"
-                    android:layout_height="36dp"
+                    android:layout_height="34dp"
                     android:layout_marginEnd="6dp"
                     android:background="@drawable/bg_btn_native_secondary"
-                    android:paddingHorizontal="12dp"
-                    android:text="@string/btn_copy_logs"
-                    android:textAllCaps="false"
-                    android:textColor="@color/text_primary"
-                    android:textSize="12sp" />
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="11dp">
 
-                <Button
+                    <ImageView
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:contentDescription="@string/btn_copy_logs"
+                        android:src="@drawable/ic_copy"
+                        android:tint="@color/text_primary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="5dp"
+                        android:text="@string/btn_copy_logs"
+                        android:textColor="@color/text_primary"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <LinearLayout
                     android:id="@+id/btnExportLogs"
                     android:layout_width="wrap_content"
-                    android:layout_height="36dp"
+                    android:layout_height="34dp"
                     android:layout_marginEnd="6dp"
                     android:background="@drawable/bg_btn_native_secondary"
-                    android:paddingHorizontal="12dp"
-                    android:text="@string/btn_export_logs"
-                    android:textAllCaps="false"
-                    android:textColor="@color/text_primary"
-                    android:textSize="12sp" />
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="11dp">
 
-                <Button
+                    <ImageView
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:contentDescription="@string/btn_export_logs"
+                        android:src="@drawable/ic_download"
+                        android:tint="@color/text_primary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="5dp"
+                        android:text="@string/btn_export_logs"
+                        android:textColor="@color/text_primary"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <LinearLayout
                     android:id="@+id/btnClearLogs"
                     android:layout_width="wrap_content"
-                    android:layout_height="36dp"
+                    android:layout_height="34dp"
                     android:background="@drawable/bg_btn_native_secondary"
-                    android:paddingHorizontal="12dp"
-                    android:text="@string/btn_clear_logs"
-                    android:textAllCaps="false"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="12sp" />
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="11dp">
+
+                    <ImageView
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:contentDescription="@string/btn_clear_logs"
+                        android:src="@drawable/ic_trash"
+                        android:tint="@color/text_secondary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="5dp"
+                        android:text="@string/btn_clear_logs"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp" />
+                </LinearLayout>
             </LinearLayout>
 
-            <TextView
-                android:id="@+id/tvLogFilePath"
+            <!-- 可点击日志目录条（无括号提示语，用目录+箭头图标直觉提示） -->
+            <LinearLayout
+                android:id="@+id/rowLogFilePath"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="10dp"
+                android:background="@drawable/bg_info_section"
                 android:clickable="true"
                 android:focusable="true"
-                android:text="日志文件："
-                android:textColor="@color/text_muted"
-                android:textSize="12sp" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingHorizontal="11dp"
+                android:paddingVertical="8dp">
+
+                <ImageView
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
+                    android:contentDescription="日志目录"
+                    android:src="@drawable/ic_folder"
+                    android:tint="@color/text_muted" />
+
+                <TextView
+                    android:id="@+id/tvLogFilePath"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginHorizontal="8dp"
+                    android:layout_weight="1"
+                    android:ellipsize="middle"
+                    android:maxLines="1"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
+
+                <ImageView
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
+                    android:contentDescription="修改目录"
+                    android:src="@drawable/ic_chevron_right"
+                    android:tint="@color/text_muted" />
+            </LinearLayout>
 
             <ScrollView
                 android:id="@+id/scrollLog"

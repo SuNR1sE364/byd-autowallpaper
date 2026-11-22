@@ -14,7 +14,7 @@
         android:paddingHorizontal="14dp"
         android:paddingVertical="20dp">
 
-        <!-- 应用标识区 -->
+        <!-- 应用标识区（移除描述性副标题） -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -24,37 +24,22 @@
             android:paddingHorizontal="8dp">
 
             <ImageView
-                android:layout_width="36dp"
-                android:layout_height="36dp"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
                 android:contentDescription="@string/app_display_name"
                 android:src="@drawable/ic_app_launcher" />
 
-            <LinearLayout
+            <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="10dp"
                 android:layout_weight="1"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:ellipsize="end"
-                    android:maxLines="1"
-                    android:text="@string/app_name"
-                    android:textColor="@color/text_primary"
-                    android:textSize="17sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:ellipsize="end"
-                    android:maxLines="1"
-                    android:text="日夜自动切换"
-                    android:textColor="@color/text_muted"
-                    android:textSize="11sp" />
-            </LinearLayout>
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="@string/app_name"
+                android:textColor="@color/text_primary"
+                android:textSize="17sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <!-- 导航项 1：主页 -->
@@ -72,8 +57,8 @@
 
             <ImageView
                 android:id="@+id/ivNavHome"
-                android:layout_width="22dp"
-                android:layout_height="22dp"
+                android:layout_width="21dp"
+                android:layout_height="21dp"
                 android:contentDescription="@string/nav_home"
                 android:src="@drawable/ic_nav_home"
                 android:tint="@color/text_secondary" />
@@ -103,8 +88,8 @@
 
             <ImageView
                 android:id="@+id/ivNavWallpaper"
-                android:layout_width="22dp"
-                android:layout_height="22dp"
+                android:layout_width="21dp"
+                android:layout_height="21dp"
                 android:contentDescription="@string/nav_wallpaper"
                 android:src="@drawable/ic_nav_wallpaper"
                 android:tint="@color/text_secondary" />
@@ -134,8 +119,8 @@
 
             <ImageView
                 android:id="@+id/ivNavAbout"
-                android:layout_width="22dp"
-                android:layout_height="22dp"
+                android:layout_width="21dp"
+                android:layout_height="21dp"
                 android:contentDescription="@string/nav_about"
                 android:src="@drawable/ic_nav_about"
                 android:tint="@color/text_secondary" />

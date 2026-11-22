@@ -4,6 +4,7 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Dialog;
 import android.app.WallpaperManager;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -15,8 +16,10 @@ import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.database.ContentObserver;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.graphics.Outline;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -26,7 +29,9 @@ import android.os.Looper;
 import android.provider.Settings;
 import android.text.InputType;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
+import android.view.Window;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.GridView;
@@ -88,6 +93,7 @@ public class MainActivity extends Activity {
     private int pendingActionAfterPermission = PENDING_NONE;
     private boolean logListenerRegistered = false;
     private String lastApplyStatusText = "尚未切换壁纸";
+    private boolean lastApplyIsError = false;
 
     // 左边栏控件
     private View navHome;
@@ -107,55 +113,93 @@ public class MainActivity extends Activity {
     private View pageWallpaper;
     private View pageAbout;
 
+    // 集中说明菜单触发按钮
+    private View btnHomeInfo;
+    private View btnWallpaperInfo;
+    private View btnAboutInfo;
+    private View rowAboutHelp;
+
     // 主页控件
     private ImageView ivSystemModeIcon;
     private TextView tvSystemModePill;
-    private TextView tvMasterStatusDesc;
-    private TextView tvMasterSubHint;
+    private View boxMasterIcon;
+    private ImageView ivMasterPowerIcon;
+    private View viewMasterStatusDot;
+    private TextView tvMasterStatusBadge;
+    private View chipBackupState;
+    private View chipApplyWarning;
+    private TextView tvApplyWarningBadge;
     private Switch switchMasterEnable;
     private View cardModeStatic;
     private View cardModeLive;
+    private View boxModeStaticIcon;
+    private View boxModeLiveIcon;
     private ImageView ivModeStaticIcon;
     private ImageView ivModeLiveIcon;
     private ImageView ivModeStaticCheck;
     private ImageView ivModeLiveCheck;
     private View layoutLiveWallpaperAction;
+    private ImageView ivLiveWallpaperStateIcon;
     private TextView tvLiveWallpaperState;
-    private Button btnActivateLiveWallpaper;
+    private View btnActivateLiveWallpaper;
     private View cardHomeDayPreview;
     private View cardHomeNightPreview;
+    private View frameHomeDaySlot;
+    private View frameHomeNightSlot;
     private ImageView ivHomeDayPreview;
     private ImageView ivHomeNightPreview;
-    private TextView tvHomeDayEmptyHint;
-    private TextView tvHomeNightEmptyHint;
-    private TextView tvHomeDayPolicy;
-    private TextView tvHomeNightPolicy;
+    private View badgeHomeDayPolicy;
+    private ImageView ivHomeDayPolicyIcon;
+    private TextView tvHomeDayPolicyCount;
+    private View badgeHomeNightPolicy;
+    private ImageView ivHomeNightPolicyIcon;
+    private TextView tvHomeNightPolicyCount;
+    private View badgeHomeDayVideo;
+    private TextView tvHomeDayVideoDuration;
+    private View badgeHomeNightVideo;
+    private TextView tvHomeNightVideoDuration;
+    private View layoutHomeDayEmpty;
+    private ImageView ivHomeDayEmptyIcon;
+    private TextView tvHomeDayEmptyLabel;
+    private View layoutHomeNightEmpty;
+    private ImageView ivHomeNightEmptyIcon;
+    private TextView tvHomeNightEmptyLabel;
     private TextView tvHomeDayName;
     private TextView tvHomeNightName;
 
     // 壁纸页控件
-    private TextView tabWallpaperDay;
-    private TextView tabWallpaperNight;
-    private Button btnAddWallpaper;
-    private TextView tvWallpaperStrategyDesc;
-    private TextView tabStrategyFixed;
-    private TextView tabStrategyRandom;
+    private View tabWallpaperDay;
+    private ImageView ivTabWallpaperDay;
+    private TextView tvTabWallpaperDay;
+    private View tabWallpaperNight;
+    private ImageView ivTabWallpaperNight;
+    private TextView tvTabWallpaperNight;
+    private View btnAddWallpaper;
+    private View tabStrategyFixed;
+    private ImageView ivTabStrategyFixed;
+    private TextView tvTabStrategyFixed;
+    private View tabStrategyRandom;
+    private ImageView ivTabStrategyRandom;
+    private TextView tvTabStrategyRandom;
     private GridView gridWallpapers;
     private View layoutWallpaperEmpty;
     private TextView tvWallpaperEmptyTitle;
-    private TextView tvWallpaperEmptySub;
-    private Button btnEmptyAddWallpaper;
+    private View btnEmptyAddWallpaper;
+    private TextView tvEmptyAddWallpaper;
 
     // 关于页控件
     private TextView tvAboutVersion;
     private TextView tvAboutDeviceInfo;
+    private View boxDebugIcon;
+    private ImageView ivDebugIcon;
     private Switch switchDebugMode;
     private View cardDebugConsole;
+    private View rowLogFilePath;
     private TextView tvLogFilePath;
-    private Button btnSetLogPath;
-    private Button btnCopyLogs;
-    private Button btnExportLogs;
-    private Button btnClearLogs;
+    private View btnSetLogPath;
+    private View btnCopyLogs;
+    private View btnExportLogs;
+    private View btnClearLogs;
     private ScrollView scrollLog;
     private TextView tvLogConsole;
 
@@ -180,6 +224,7 @@ public class MainActivity extends Activity {
     private final WallpaperController.ApplyStatusListener applyStatusListener =
             (statusText, isError) -> {
                 lastApplyStatusText = statusText;
+                lastApplyIsError = isError;
                 renderHomeStatus();
                 if (currentTab == TAB_WALLPAPER) {
                     refreshWallpaperPage();
@@ -368,28 +413,55 @@ public class MainActivity extends Activity {
         pageWallpaper = findViewById(R.id.pageWallpaper);
         pageAbout = findViewById(R.id.pageAbout);
 
+        btnHomeInfo = findViewById(R.id.btnHomeInfo);
+        btnWallpaperInfo = findViewById(R.id.btnWallpaperInfo);
+        btnAboutInfo = findViewById(R.id.btnAboutInfo);
+        rowAboutHelp = findViewById(R.id.rowAboutHelp);
+
         ivSystemModeIcon = findViewById(R.id.ivSystemModeIcon);
         tvSystemModePill = findViewById(R.id.tvSystemModePill);
-        tvMasterStatusDesc = findViewById(R.id.tvMasterStatusDesc);
-        tvMasterSubHint = findViewById(R.id.tvMasterSubHint);
+        boxMasterIcon = findViewById(R.id.boxMasterIcon);
+        ivMasterPowerIcon = findViewById(R.id.ivMasterPowerIcon);
+        viewMasterStatusDot = findViewById(R.id.viewMasterStatusDot);
+        tvMasterStatusBadge = findViewById(R.id.tvMasterStatusBadge);
+        chipBackupState = findViewById(R.id.chipBackupState);
+        chipApplyWarning = findViewById(R.id.chipApplyWarning);
+        tvApplyWarningBadge = findViewById(R.id.tvApplyWarningBadge);
         switchMasterEnable = findViewById(R.id.switchMasterEnable);
         cardModeStatic = findViewById(R.id.cardModeStatic);
         cardModeLive = findViewById(R.id.cardModeLive);
+        boxModeStaticIcon = findViewById(R.id.boxModeStaticIcon);
+        boxModeLiveIcon = findViewById(R.id.boxModeLiveIcon);
         ivModeStaticIcon = findViewById(R.id.ivModeStaticIcon);
         ivModeLiveIcon = findViewById(R.id.ivModeLiveIcon);
         ivModeStaticCheck = findViewById(R.id.ivModeStaticCheck);
         ivModeLiveCheck = findViewById(R.id.ivModeLiveCheck);
         layoutLiveWallpaperAction = findViewById(R.id.layoutLiveWallpaperAction);
+        ivLiveWallpaperStateIcon = findViewById(R.id.ivLiveWallpaperStateIcon);
         tvLiveWallpaperState = findViewById(R.id.tvLiveWallpaperState);
         btnActivateLiveWallpaper = findViewById(R.id.btnActivateLiveWallpaper);
         cardHomeDayPreview = findViewById(R.id.cardHomeDayPreview);
         cardHomeNightPreview = findViewById(R.id.cardHomeNightPreview);
+        frameHomeDaySlot = findViewById(R.id.frameHomeDaySlot);
+        frameHomeNightSlot = findViewById(R.id.frameHomeNightSlot);
         ivHomeDayPreview = findViewById(R.id.ivHomeDayPreview);
         ivHomeNightPreview = findViewById(R.id.ivHomeNightPreview);
-        tvHomeDayEmptyHint = findViewById(R.id.tvHomeDayEmptyHint);
-        tvHomeNightEmptyHint = findViewById(R.id.tvHomeNightEmptyHint);
-        tvHomeDayPolicy = findViewById(R.id.tvHomeDayPolicy);
-        tvHomeNightPolicy = findViewById(R.id.tvHomeNightPolicy);
+        badgeHomeDayPolicy = findViewById(R.id.badgeHomeDayPolicy);
+        ivHomeDayPolicyIcon = findViewById(R.id.ivHomeDayPolicyIcon);
+        tvHomeDayPolicyCount = findViewById(R.id.tvHomeDayPolicyCount);
+        badgeHomeNightPolicy = findViewById(R.id.badgeHomeNightPolicy);
+        ivHomeNightPolicyIcon = findViewById(R.id.ivHomeNightPolicyIcon);
+        tvHomeNightPolicyCount = findViewById(R.id.tvHomeNightPolicyCount);
+        badgeHomeDayVideo = findViewById(R.id.badgeHomeDayVideo);
+        tvHomeDayVideoDuration = findViewById(R.id.tvHomeDayVideoDuration);
+        badgeHomeNightVideo = findViewById(R.id.badgeHomeNightVideo);
+        tvHomeNightVideoDuration = findViewById(R.id.tvHomeNightVideoDuration);
+        layoutHomeDayEmpty = findViewById(R.id.layoutHomeDayEmpty);
+        ivHomeDayEmptyIcon = findViewById(R.id.ivHomeDayEmptyIcon);
+        tvHomeDayEmptyLabel = findViewById(R.id.tvHomeDayEmptyLabel);
+        layoutHomeNightEmpty = findViewById(R.id.layoutHomeNightEmpty);
+        ivHomeNightEmptyIcon = findViewById(R.id.ivHomeNightEmptyIcon);
+        tvHomeNightEmptyLabel = findViewById(R.id.tvHomeNightEmptyLabel);
         tvHomeDayName = findViewById(R.id.tvHomeDayName);
         tvHomeNightName = findViewById(R.id.tvHomeNightName);
 
@@ -397,16 +469,23 @@ public class MainActivity extends Activity {
         applyRoundClip(ivHomeNightPreview, 12f);
 
         tabWallpaperDay = findViewById(R.id.tabWallpaperDay);
+        ivTabWallpaperDay = findViewById(R.id.ivTabWallpaperDay);
+        tvTabWallpaperDay = findViewById(R.id.tvTabWallpaperDay);
         tabWallpaperNight = findViewById(R.id.tabWallpaperNight);
+        ivTabWallpaperNight = findViewById(R.id.ivTabWallpaperNight);
+        tvTabWallpaperNight = findViewById(R.id.tvTabWallpaperNight);
         btnAddWallpaper = findViewById(R.id.btnAddWallpaper);
-        tvWallpaperStrategyDesc = findViewById(R.id.tvWallpaperStrategyDesc);
         tabStrategyFixed = findViewById(R.id.tabStrategyFixed);
+        ivTabStrategyFixed = findViewById(R.id.ivTabStrategyFixed);
+        tvTabStrategyFixed = findViewById(R.id.tvTabStrategyFixed);
         tabStrategyRandom = findViewById(R.id.tabStrategyRandom);
+        ivTabStrategyRandom = findViewById(R.id.ivTabStrategyRandom);
+        tvTabStrategyRandom = findViewById(R.id.tvTabStrategyRandom);
         gridWallpapers = findViewById(R.id.gridWallpapers);
         layoutWallpaperEmpty = findViewById(R.id.layoutWallpaperEmpty);
         tvWallpaperEmptyTitle = findViewById(R.id.tvWallpaperEmptyTitle);
-        tvWallpaperEmptySub = findViewById(R.id.tvWallpaperEmptySub);
         btnEmptyAddWallpaper = findViewById(R.id.btnEmptyAddWallpaper);
+        tvEmptyAddWallpaper = findViewById(R.id.tvEmptyAddWallpaper);
 
         gridAdapter = new WallpaperGridAdapter(this, new WallpaperGridAdapter.ItemActionListener() {
             @Override
@@ -423,8 +502,11 @@ public class MainActivity extends Activity {
 
         tvAboutVersion = findViewById(R.id.tvAboutVersion);
         tvAboutDeviceInfo = findViewById(R.id.tvAboutDeviceInfo);
+        boxDebugIcon = findViewById(R.id.boxDebugIcon);
+        ivDebugIcon = findViewById(R.id.ivDebugIcon);
         switchDebugMode = findViewById(R.id.switchDebugMode);
         cardDebugConsole = findViewById(R.id.cardDebugConsole);
+        rowLogFilePath = findViewById(R.id.rowLogFilePath);
         tvLogFilePath = findViewById(R.id.tvLogFilePath);
         btnSetLogPath = findViewById(R.id.btnSetLogPath);
         btnCopyLogs = findViewById(R.id.btnCopyLogs);
@@ -449,6 +531,13 @@ public class MainActivity extends Activity {
         navHome.setOnClickListener(v -> selectTab(TAB_HOME));
         navWallpaper.setOnClickListener(v -> selectTab(TAB_WALLPAPER));
         navAbout.setOnClickListener(v -> selectTab(TAB_ABOUT));
+
+        View.OnClickListener infoMenuListener = v -> showInfoMenuDialog();
+        btnHomeInfo.setOnClickListener(infoMenuListener);
+        btnWallpaperInfo.setOnClickListener(infoMenuListener);
+        btnAboutInfo.setOnClickListener(infoMenuListener);
+        rowAboutHelp.setOnClickListener(infoMenuListener);
+        chipApplyWarning.setOnClickListener(infoMenuListener);
 
         switchMasterEnable.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if (suppressControlEvents) {
@@ -504,7 +593,7 @@ public class MainActivity extends Activity {
         });
 
         btnSetLogPath.setOnClickListener(v -> showLogPathConfigDialog());
-        tvLogFilePath.setOnClickListener(v -> showLogPathConfigDialog());
+        rowLogFilePath.setOnClickListener(v -> showLogPathConfigDialog());
 
         btnCopyLogs.setOnClickListener(v -> {
             try {
@@ -579,14 +668,16 @@ public class MainActivity extends Activity {
 
         if (modeValid) {
             ivSystemModeIcon.setImageResource(systemDark ? R.drawable.ic_moon : R.drawable.ic_sun);
-            String pillText = "当前：" + (systemDark ? "夜间模式" : "日间模式");
+            ivSystemModeIcon.setColorFilter(getColor(R.color.accent_primary));
+            String pillText = systemDark ? "夜间" : "日间";
             if (modeHint != null) {
                 pillText += " · " + modeHint;
             }
             tvSystemModePill.setText(pillText);
         } else {
-            ivSystemModeIcon.setImageResource(R.drawable.ic_sun);
-            tvSystemModePill.setText("当前：未检测到车机日夜模式");
+            ivSystemModeIcon.setImageResource(R.drawable.ic_alert_triangle);
+            ivSystemModeIcon.setColorFilter(getColor(R.color.status_warning));
+            tvSystemModePill.setText("未检测");
         }
 
         boolean enabled = prefs.isEnabled();
@@ -600,46 +691,52 @@ public class MainActivity extends Activity {
             suppressControlEvents = false;
         }
 
+        int dotColor;
         if (enabled && running) {
+            boxMasterIcon.setSelected(true);
             if (modeValid) {
-                tvMasterStatusDesc.setText("已开启 · 正在跟随车机" + (systemDark ? "夜间" : "日间") + "模式运行");
-                viewSidebarStatusDot.getBackground().setTint(getColor(R.color.status_success));
+                dotColor = getColor(R.color.status_success);
+                ivMasterPowerIcon.setColorFilter(getColor(R.color.accent_primary));
+                tvMasterStatusBadge.setText("运行中");
+                tvMasterStatusBadge.setTextColor(dotColor);
                 tvSidebarStatus.setText("运行中 · " + (systemDark ? "夜间" : "日间"));
             } else {
-                tvMasterStatusDesc.setText("已开启 · 比亚迪日夜信号读取异常（请查看调试日志）");
-                viewSidebarStatusDot.getBackground().setTint(getColor(R.color.status_warning));
+                dotColor = getColor(R.color.status_warning);
+                ivMasterPowerIcon.setColorFilter(dotColor);
+                tvMasterStatusBadge.setText("信号异常");
+                tvMasterStatusBadge.setTextColor(dotColor);
                 tvSidebarStatus.setText("信号异常");
             }
-            if (mode == AppPrefs.MODE_STATIC_MANAGER) {
-                if (prefs.hasOriginalBackup()) {
-                    String meta = prefs.getOriginalBackupMeta();
-                    tvMasterSubHint.setText("已备份原壁纸" + (meta != null ? " (" + meta + ")" : "")
-                            + "，关闭开关后将自动复原 · " + lastApplyStatusText);
-                } else {
-                    tvMasterSubHint.setText("未备份原壁纸 · " + lastApplyStatusText);
-                }
-            } else {
-                tvMasterSubHint.setText("动态壁纸模式 · " + lastApplyStatusText);
-            }
         } else if (enabled) {
-            tvMasterStatusDesc.setText("已开启 · 正在启动后台监听服务...");
-            tvMasterSubHint.setText(lastApplyStatusText);
-            viewSidebarStatusDot.getBackground().setTint(getColor(R.color.status_warning));
-            tvSidebarStatus.setText("启动中...");
+            boxMasterIcon.setSelected(true);
+            dotColor = getColor(R.color.status_warning);
+            ivMasterPowerIcon.setColorFilter(dotColor);
+            tvMasterStatusBadge.setText("启动中");
+            tvMasterStatusBadge.setTextColor(dotColor);
+            tvSidebarStatus.setText("启动中");
         } else {
-            tvMasterStatusDesc.setText("已关闭 · 开启后将随车机系统日夜模式自动切换壁纸");
-            if (prefs.hasOriginalBackup()) {
-                tvMasterSubHint.setText("仍保留原壁纸备份，再次开启或复原后使用");
-            } else {
-                tvMasterSubHint.setText("当前模式：" + AppPrefs.formatWallpaperMode(mode));
-            }
-            viewSidebarStatusDot.getBackground().setTint(getColor(R.color.status_idle));
+            boxMasterIcon.setSelected(false);
+            dotColor = getColor(R.color.status_idle);
+            ivMasterPowerIcon.setColorFilter(getColor(R.color.text_secondary));
+            tvMasterStatusBadge.setText("已关闭");
+            tvMasterStatusBadge.setTextColor(getColor(R.color.text_secondary));
             tvSidebarStatus.setText("未开启");
         }
+        viewMasterStatusDot.getBackground().mutate().setTint(dotColor);
+        viewSidebarStatusDot.getBackground().mutate().setTint(dotColor);
+
+        chipBackupState.setVisibility(prefs.hasOriginalBackup() ? View.VISIBLE : View.GONE);
+        chipApplyWarning.setVisibility(enabled && lastApplyIsError ? View.VISIBLE : View.GONE);
+
+        // 主页预览卡片高亮当前系统正在生效的一侧（日间或夜间）
+        cardHomeDayPreview.setSelected(enabled && modeValid && !systemDark);
+        cardHomeNightPreview.setSelected(enabled && modeValid && systemDark);
 
         boolean isStatic = (mode == AppPrefs.MODE_STATIC_MANAGER);
         cardModeStatic.setSelected(isStatic);
         cardModeLive.setSelected(!isStatic);
+        boxModeStaticIcon.setSelected(isStatic);
+        boxModeLiveIcon.setSelected(!isStatic);
         ivModeStaticCheck.setVisibility(isStatic ? View.VISIBLE : View.GONE);
         ivModeLiveCheck.setVisibility(!isStatic ? View.VISIBLE : View.GONE);
         ivModeStaticIcon.setColorFilter(getColor(isStatic ? R.color.accent_primary : R.color.text_secondary));
@@ -648,12 +745,67 @@ public class MainActivity extends Activity {
         if (!isStatic) {
             layoutLiveWallpaperAction.setVisibility(View.VISIBLE);
             boolean active = WallpaperController.isOurLiveWallpaperActive(this);
-            tvLiveWallpaperState.setText(WallpaperController.describeActiveSystemWallpaper(this));
-            tvLiveWallpaperState.setTextColor(getColor(active ? R.color.status_success : R.color.status_warning));
+            int stateColor = getColor(active ? R.color.status_success : R.color.status_warning);
+            ivLiveWallpaperStateIcon.setImageResource(
+                    active ? R.drawable.ic_check_circle : R.drawable.ic_alert_triangle);
+            ivLiveWallpaperStateIcon.setColorFilter(stateColor);
+            tvLiveWallpaperState.setText(active ? "动态壁纸已激活" : "未激活系统动态壁纸");
+            tvLiveWallpaperState.setTextColor(stateColor);
             btnActivateLiveWallpaper.setVisibility(active ? View.GONE : View.VISIBLE);
         } else {
             layoutLiveWallpaperAction.setVisibility(View.GONE);
         }
+    }
+
+    private void showInfoMenuDialog() {
+        final Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setContentView(R.layout.dialog_info_menu);
+        dialog.setCanceledOnTouchOutside(true);
+
+        TextView tvSummary = dialog.findViewById(R.id.tvInfoRuntimeSummary);
+        if (tvSummary != null) {
+            tvSummary.setText(buildRuntimeStatusSummary());
+        }
+        View btnClose = dialog.findViewById(R.id.btnCloseInfoDialog);
+        if (btnClose != null) {
+            btnClose.setOnClickListener(v -> dialog.dismiss());
+        }
+
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            int screenWidth = getResources().getDisplayMetrics().widthPixels;
+            int maxDialogWidth = dpToPx(560);
+            int targetWidth = Math.min((int) (screenWidth * 0.88f), maxDialogWidth);
+            window.setLayout(targetWidth, ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+        dialog.show();
+    }
+
+    private String buildRuntimeStatusSummary() {
+        VehicleStateMonitor.BydDayNightReading reading = VehicleStateMonitor.readBydNightModeNow(this);
+        StringBuilder sb = new StringBuilder();
+        sb.append("当前状态：");
+        if (prefs.isEnabled() && AutoDarkMonitorService.isRunning()) {
+            sb.append(reading.isValid()
+                    ? ("运行中 · " + (reading.isDark() ? "夜间" : "日间"))
+                    : "运行中 · 信号异常");
+        } else if (prefs.isEnabled()) {
+            sb.append("启动中");
+        } else {
+            sb.append("已关闭");
+        }
+        if (prefs.hasOriginalBackup()) {
+            String meta = prefs.getOriginalBackupMeta();
+            sb.append("\n原壁纸备份：已备份").append(meta != null ? " (" + meta + ")" : "");
+        } else if (prefs.getWallpaperMode() == AppPrefs.MODE_STATIC_MANAGER) {
+            sb.append("\n原壁纸备份：未备份");
+        }
+        if (lastApplyStatusText != null && !lastApplyStatusText.isEmpty()) {
+            sb.append("\n最近执行：").append(lastApplyStatusText);
+        }
+        return sb.toString();
     }
 
     private void refreshHomeWallpaperOverviewAsync() {
@@ -687,10 +839,18 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> {
                 bindHomeOverviewCard(
                         false, isLiveMode, dayAll.size(), dayEligible.size(), dayMode, dayActive, dayBmp,
-                        ivHomeDayPreview, tvHomeDayEmptyHint, tvHomeDayPolicy, tvHomeDayName);
+                        frameHomeDaySlot, ivHomeDayPreview,
+                        badgeHomeDayPolicy, ivHomeDayPolicyIcon, tvHomeDayPolicyCount,
+                        badgeHomeDayVideo, tvHomeDayVideoDuration,
+                        layoutHomeDayEmpty, ivHomeDayEmptyIcon, tvHomeDayEmptyLabel,
+                        tvHomeDayName);
                 bindHomeOverviewCard(
                         true, isLiveMode, nightAll.size(), nightEligible.size(), nightMode, nightActive, nightBmp,
-                        ivHomeNightPreview, tvHomeNightEmptyHint, tvHomeNightPolicy, tvHomeNightName);
+                        frameHomeNightSlot, ivHomeNightPreview,
+                        badgeHomeNightPolicy, ivHomeNightPolicyIcon, tvHomeNightPolicyCount,
+                        badgeHomeNightVideo, tvHomeNightVideoDuration,
+                        layoutHomeNightEmpty, ivHomeNightEmptyIcon, tvHomeNightEmptyLabel,
+                        tvHomeNightName);
             });
         });
     }
@@ -698,31 +858,47 @@ public class MainActivity extends Activity {
     private void bindHomeOverviewCard(boolean isNight, boolean isLiveMode,
                                       int totalCount, int eligibleCount, int selectionMode,
                                       WallpaperRepository.WallpaperItem activeItem, Bitmap bmp,
-                                      ImageView iv, TextView emptyHint,
-                                      TextView tvPolicy, TextView tvName) {
+                                      View slotFrame, ImageView iv,
+                                      View badgePolicy, ImageView ivPolicyIcon, TextView tvPolicyCount,
+                                      View badgeVideo, TextView tvVideoDuration,
+                                      View layoutEmpty, ImageView ivEmptyIcon, TextView tvEmptyLabel,
+                                      TextView tvName) {
         if (eligibleCount == 0 || activeItem == null) {
+            slotFrame.setBackgroundResource(R.drawable.bg_empty_slot);
             iv.setImageDrawable(null);
-            emptyHint.setVisibility(View.VISIBLE);
+            badgePolicy.setVisibility(View.GONE);
+            badgeVideo.setVisibility(View.GONE);
+            layoutEmpty.setVisibility(View.VISIBLE);
             if (!isLiveMode && totalCount > 0) {
-                emptyHint.setText("仅有视频壁纸\n请添加图片或切动态模式");
-                tvPolicy.setText("仅动态模式可用");
-                tvName.setText("已有 " + totalCount + " 个视频壁纸");
+                ivEmptyIcon.setImageResource(R.drawable.ic_lock);
+                tvEmptyLabel.setText("仅动态模式");
+                tvName.setText(totalCount + " 个视频");
             } else {
-                emptyHint.setText(isNight ? "尚未添加夜间壁纸\n点击前往上传" : "尚未添加日间壁纸\n点击前往上传");
-                tvPolicy.setText("未添加");
-                tvName.setText("点击前往添加壁纸");
+                ivEmptyIcon.setImageResource(R.drawable.ic_add_photo);
+                tvEmptyLabel.setText(isNight ? "添加夜间" : "添加日间");
+                tvName.setText("未设置");
             }
             return;
         }
-        emptyHint.setVisibility(View.GONE);
+        slotFrame.setBackgroundResource(R.drawable.bg_preview_placeholder);
+        layoutEmpty.setVisibility(View.GONE);
         iv.setImageBitmap(bmp);
-        if (selectionMode == AppPrefs.SELECT_RANDOM) {
-            tvPolicy.setText("随机轮换 · " + eligibleCount + " 项");
+
+        badgePolicy.setVisibility(View.VISIBLE);
+        ivPolicyIcon.setImageResource(selectionMode == AppPrefs.SELECT_RANDOM
+                ? R.drawable.ic_strategy_random
+                : R.drawable.ic_strategy_fixed);
+        tvPolicyCount.setText(String.valueOf(eligibleCount));
+
+        if (activeItem.isVideo()) {
+            badgeVideo.setVisibility(View.VISIBLE);
+            tvVideoDuration.setText(activeItem.durationMs > 0L
+                    ? VideoSpecEvaluator.formatDuration(activeItem.durationMs)
+                    : "视频");
         } else {
-            tvPolicy.setText("指定单项 · " + eligibleCount + " 项");
+            badgeVideo.setVisibility(View.GONE);
         }
-        String prefix = activeItem.isVideo() ? "[视频] " : "";
-        tvName.setText("当前：" + prefix + activeItem.displayName);
+        tvName.setText(activeItem.displayName);
     }
 
     private void setMasterSwitchCheckedSilently(boolean checked) {
@@ -1012,37 +1188,23 @@ public class MainActivity extends Activity {
         List<WallpaperRepository.WallpaperItem> dayItems = WallpaperRepository.listWallpapers(this, false, true);
         List<WallpaperRepository.WallpaperItem> nightItems = WallpaperRepository.listWallpapers(this, true, true);
 
-        tabWallpaperDay.setText("日间壁纸 (" + dayItems.size() + ")");
-        tabWallpaperNight.setText("夜间壁纸 (" + nightItems.size() + ")");
-        styleSegmentedTab(tabWallpaperDay, !editingNight);
-        styleSegmentedTab(tabWallpaperNight, editingNight);
+        tvTabWallpaperDay.setText("日间 " + dayItems.size());
+        tvTabWallpaperNight.setText("夜间 " + nightItems.size());
+        styleSegmentedTab(tabWallpaperDay, ivTabWallpaperDay, tvTabWallpaperDay, !editingNight);
+        styleSegmentedTab(tabWallpaperNight, ivTabWallpaperNight, tvTabWallpaperNight, editingNight);
 
         int selectionMode = prefs.getSelectionMode(editingNight);
         boolean isRandom = (selectionMode == AppPrefs.SELECT_RANDOM);
-        styleSegmentedTab(tabStrategyFixed, !isRandom);
-        styleSegmentedTab(tabStrategyRandom, isRandom);
+        styleSegmentedTab(tabStrategyFixed, ivTabStrategyFixed, tvTabStrategyFixed, !isRandom);
+        styleSegmentedTab(tabStrategyRandom, ivTabStrategyRandom, tvTabStrategyRandom, isRandom);
 
-        if (isRandom) {
-            tvWallpaperStrategyDesc.setText(isLiveMode
-                    ? "在当前壁纸中随机轮换（日夜切换及车机重启时自动换图/换视频）"
-                    : "在当前可用图片壁纸中随机轮换（日夜切换及车机重启时自动换图）");
-        } else {
-            tvWallpaperStrategyDesc.setText("点击下方壁纸设为指定使用，再次点击可查看预览与详情");
-        }
-
-        if (isLiveMode) {
-            tvWallpaperEmptySub.setText("支持一次选择多张图片或视频，可在固定使用与随机轮换之间自由切换");
-            btnEmptyAddWallpaper.setText("选择图片或视频");
-        } else {
-            tvWallpaperEmptySub.setText("支持一次选择多张图片（切换为“动态壁纸模式”后可添加视频壁纸）");
-            btnEmptyAddWallpaper.setText("选择图片上传");
-        }
+        tvEmptyAddWallpaper.setText(isLiveMode ? "添加图片或视频" : "添加图片");
 
         List<WallpaperRepository.WallpaperItem> activeList = editingNight ? nightItems : dayItems;
         if (activeList.isEmpty()) {
             gridWallpapers.setVisibility(View.GONE);
             layoutWallpaperEmpty.setVisibility(View.VISIBLE);
-            tvWallpaperEmptyTitle.setText(editingNight ? "还没有添加夜间壁纸" : "还没有添加日间壁纸");
+            tvWallpaperEmptyTitle.setText(editingNight ? "暂无夜间壁纸" : "暂无日间壁纸");
         } else {
             layoutWallpaperEmpty.setVisibility(View.GONE);
             gridWallpapers.setVisibility(View.VISIBLE);
@@ -1053,10 +1215,12 @@ public class MainActivity extends Activity {
         gridAdapter.updateData(activeList, editingNight, selectionMode, selectedId, activeId, isLiveMode);
     }
 
-    private void styleSegmentedTab(TextView tab, boolean selected) {
-        tab.setSelected(selected);
-        tab.setTextColor(getColor(selected ? R.color.accent_primary : R.color.text_secondary));
-        tab.setTypeface(null, selected ? Typeface.BOLD : Typeface.NORMAL);
+    private void styleSegmentedTab(View container, ImageView icon, TextView label, boolean selected) {
+        container.setSelected(selected);
+        int color = getColor(selected ? R.color.accent_primary : R.color.text_secondary);
+        icon.setColorFilter(color);
+        label.setTextColor(color);
+        label.setTypeface(null, selected ? Typeface.BOLD : Typeface.NORMAL);
     }
 
     private void updateSelectionMode(int mode) {
@@ -1252,7 +1416,7 @@ public class MainActivity extends Activity {
         } catch (Throwable t) {
             AppLogger.e(TAG, "读取应用版本失败", t);
         }
-        tvAboutVersion.setText("版本 v" + versionName);
+        tvAboutVersion.setText("v" + versionName);
         tvAboutDeviceInfo.setText(Build.MANUFACTURER + " " + Build.MODEL
                 + " · Android " + Build.VERSION.RELEASE + " (SDK " + Build.VERSION.SDK_INT + ")");
     }
@@ -1266,6 +1430,8 @@ public class MainActivity extends Activity {
             suppressControlEvents = false;
         }
 
+        boxDebugIcon.setSelected(debugEnabled);
+        ivDebugIcon.setColorFilter(getColor(debugEnabled ? R.color.accent_primary : R.color.text_secondary));
         cardDebugConsole.setVisibility(debugEnabled ? View.VISIBLE : View.GONE);
         if (debugEnabled) {
             refreshLogLocationText();
@@ -1291,7 +1457,7 @@ public class MainActivity extends Activity {
 
     private void refreshLogLocationText() {
         if (tvLogFilePath != null) {
-            tvLogFilePath.setText(AppLogger.getLogLocationSummary(this) + "（点击可修改保存位置）");
+            tvLogFilePath.setText(AppLogger.getLogLocationSummary(this));
         }
     }
 

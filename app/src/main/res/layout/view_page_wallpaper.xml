@@ -7,7 +7,65 @@
     android:padding="@dimen/page_padding"
     android:visibility="gone">
 
-    <!-- 顶部栏：标题 + 日夜分段切换 + 添加壁纸按钮 -->
+    <!-- 顶部栏：标题 + 感叹号说明按钮 + 添加按钮 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="14dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/wallpaper_title"
+            android:textColor="@color/text_primary"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <ImageButton
+            android:id="@+id/btnWallpaperInfo"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginEnd="10dp"
+            android:background="@drawable/bg_btn_icon_circle"
+            android:contentDescription="@string/info_menu_title"
+            android:padding="10dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_info_alert"
+            android:tint="@color/text_secondary" />
+
+        <LinearLayout
+            android:id="@+id/btnAddWallpaper"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:background="@drawable/bg_btn_native_primary"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp">
+
+            <ImageView
+                android:layout_width="17dp"
+                android:layout_height="17dp"
+                android:contentDescription="@string/btn_add_wallpaper"
+                android:src="@drawable/ic_plus"
+                android:tint="#FFFFFF" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:text="@string/btn_add_wallpaper"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 紧凑控制条：日/夜分组 + 指定/随机策略（无描述性副标题） -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -15,104 +73,7 @@
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/wallpaper_title"
-            android:textColor="@color/text_primary"
-            android:textSize="24sp"
-            android:textStyle="bold" />
-
         <!-- 日夜分段控件 -->
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="44dp"
-            android:layout_marginStart="20dp"
-            android:background="@drawable/bg_segmented_track"
-            android:orientation="horizontal"
-            android:padding="4dp">
-
-            <TextView
-                android:id="@+id/tabWallpaperDay"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:background="@drawable/bg_segmented_tab"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:paddingHorizontal="16dp"
-                android:text="日间壁纸 (0)"
-                android:textColor="@color/text_primary"
-                android:textSize="13sp" />
-
-            <TextView
-                android:id="@+id/tabWallpaperNight"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:background="@drawable/bg_segmented_tab"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:paddingHorizontal="16dp"
-                android:text="夜间壁纸 (0)"
-                android:textColor="@color/text_secondary"
-                android:textSize="13sp" />
-        </LinearLayout>
-
-        <View
-            android:layout_width="0dp"
-            android:layout_height="1dp"
-            android:layout_weight="1" />
-
-        <Button
-            android:id="@+id/btnAddWallpaper"
-            android:layout_width="wrap_content"
-            android:layout_height="44dp"
-            android:background="@drawable/bg_btn_native_primary"
-            android:paddingHorizontal="18dp"
-            android:text="@string/btn_add_wallpaper"
-            android:textAllCaps="false"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold" />
-    </LinearLayout>
-
-    <!-- 策略控制卡片 -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="16dp"
-        android:background="@drawable/bg_card_native"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingHorizontal="18dp"
-        android:paddingVertical="14dp">
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="14dp"
-            android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/wallpaper_strategy_title"
-                android:textColor="@color/text_primary"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/tvWallpaperStrategyDesc"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:text="点击下方任意壁纸即可设为当前指定壁纸"
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
-        </LinearLayout>
-
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="42dp"
@@ -120,7 +81,80 @@
             android:orientation="horizontal"
             android:padding="4dp">
 
-            <TextView
+            <LinearLayout
+                android:id="@+id/tabWallpaperDay"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_segmented_tab"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:paddingHorizontal="14dp">
+
+                <ImageView
+                    android:id="@+id/ivTabWallpaperDay"
+                    android:layout_width="15dp"
+                    android:layout_height="15dp"
+                    android:contentDescription="日间"
+                    android:src="@drawable/ic_sun"
+                    android:tint="@color/accent_primary" />
+
+                <TextView
+                    android:id="@+id/tvTabWallpaperDay"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="日间 0"
+                    android:textColor="@color/accent_primary"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/tabWallpaperNight"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_segmented_tab"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:paddingHorizontal="14dp">
+
+                <ImageView
+                    android:id="@+id/ivTabWallpaperNight"
+                    android:layout_width="15dp"
+                    android:layout_height="15dp"
+                    android:contentDescription="夜间"
+                    android:src="@drawable/ic_moon"
+                    android:tint="@color/text_secondary" />
+
+                <TextView
+                    android:id="@+id/tvTabWallpaperNight"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="夜间 0"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <!-- 策略分段控件：指定 / 随机 -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="42dp"
+            android:background="@drawable/bg_segmented_track"
+            android:orientation="horizontal"
+            android:padding="4dp">
+
+            <LinearLayout
                 android:id="@+id/tabStrategyFixed"
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
@@ -128,12 +162,29 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
-                android:paddingHorizontal="14dp"
-                android:text="@string/wallpaper_strategy_fixed"
-                android:textColor="@color/text_primary"
-                android:textSize="13sp" />
+                android:orientation="horizontal"
+                android:paddingHorizontal="13dp">
 
-            <TextView
+                <ImageView
+                    android:id="@+id/ivTabStrategyFixed"
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
+                    android:contentDescription="@string/wallpaper_strategy_fixed"
+                    android:src="@drawable/ic_strategy_fixed"
+                    android:tint="@color/accent_primary" />
+
+                <TextView
+                    android:id="@+id/tvTabStrategyFixed"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="5dp"
+                    android:text="@string/wallpaper_strategy_fixed"
+                    android:textColor="@color/accent_primary"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
                 android:id="@+id/tabStrategyRandom"
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
@@ -141,14 +192,30 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
-                android:paddingHorizontal="14dp"
-                android:text="@string/wallpaper_strategy_random"
-                android:textColor="@color/text_secondary"
-                android:textSize="13sp" />
+                android:orientation="horizontal"
+                android:paddingHorizontal="13dp">
+
+                <ImageView
+                    android:id="@+id/ivTabStrategyRandom"
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
+                    android:contentDescription="@string/wallpaper_strategy_random"
+                    android:src="@drawable/ic_strategy_random"
+                    android:tint="@color/text_secondary" />
+
+                <TextView
+                    android:id="@+id/tvTabStrategyRandom"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="5dp"
+                    android:text="@string/wallpaper_strategy_random"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 
-    <!-- 壁纸网格与空状态区 -->
+    <!-- 壁纸网格与极简空状态区 -->
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -175,44 +242,59 @@
             android:padding="32dp"
             android:visibility="gone">
 
-            <ImageView
-                android:layout_width="52dp"
-                android:layout_height="52dp"
-                android:contentDescription="暂无壁纸"
-                android:src="@drawable/ic_add_photo"
-                android:tint="@color/text_muted" />
+            <FrameLayout
+                android:layout_width="68dp"
+                android:layout_height="68dp"
+                android:background="@drawable/bg_icon_badge">
+
+                <ImageView
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_gravity="center"
+                    android:contentDescription="暂无壁纸"
+                    android:src="@drawable/ic_add_photo"
+                    android:tint="@color/text_muted" />
+            </FrameLayout>
 
             <TextView
                 android:id="@+id/tvWallpaperEmptyTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="还没有添加日间壁纸"
+                android:layout_marginTop="14dp"
+                android:text="暂无日间壁纸"
                 android:textColor="@color/text_primary"
                 android:textSize="16sp"
                 android:textStyle="bold" />
 
-            <TextView
-                android:id="@+id/tvWallpaperEmptySub"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:text="支持一次选择多张图片，可在固定单张与随机轮换之间自由切换"
-                android:textColor="@color/text_secondary"
-                android:textSize="13sp" />
-
-            <Button
+            <LinearLayout
                 android:id="@+id/btnEmptyAddWallpaper"
                 android:layout_width="wrap_content"
                 android:layout_height="44dp"
                 android:layout_marginTop="18dp"
                 android:background="@drawable/bg_btn_native_primary"
-                android:paddingHorizontal="24dp"
-                android:text="选择图片上传"
-                android:textAllCaps="false"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:paddingHorizontal="22dp">
+
+                <ImageView
+                    android:layout_width="17dp"
+                    android:layout_height="17dp"
+                    android:contentDescription="添加壁纸"
+                    android:src="@drawable/ic_plus"
+                    android:tint="#FFFFFF" />
+
+                <TextView
+                    android:id="@+id/tvEmptyAddWallpaper"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="添加图片"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
         </LinearLayout>
     </FrameLayout>
 </LinearLayout>

@@ -12,7 +12,7 @@
         android:orientation="vertical"
         android:padding="@dimen/page_padding">
 
-        <!-- 顶部标题栏 -->
+        <!-- 顶部标题栏：标题 + 日夜实时胶囊 + 集中说明感叹号按钮 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -31,12 +31,11 @@
 
             <LinearLayout
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_height="38dp"
                 android:background="@drawable/bg_pill_status"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:paddingHorizontal="14dp"
-                android:paddingVertical="7dp">
+                android:paddingHorizontal="14dp">
 
                 <ImageView
                     android:id="@+id/ivSystemModeIcon"
@@ -51,14 +50,26 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="6dp"
-                    android:text="当前：日间模式"
+                    android:text="日间"
                     android:textColor="@color/text_primary"
                     android:textSize="13sp"
                     android:textStyle="bold" />
             </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/btnHomeInfo"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="10dp"
+                android:background="@drawable/bg_btn_icon_circle"
+                android:contentDescription="@string/info_menu_title"
+                android:padding="9dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_info_alert"
+                android:tint="@color/text_secondary" />
         </LinearLayout>
 
-        <!-- 卡片 1：主开关卡片 -->
+        <!-- 卡片 1：主开关卡片（无描述性长文，以图标+状态徽章直觉呈现） -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -68,10 +79,26 @@
             android:orientation="horizontal"
             android:padding="@dimen/card_padding">
 
+            <FrameLayout
+                android:id="@+id/boxMasterIcon"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/bg_icon_badge">
+
+                <ImageView
+                    android:id="@+id/ivMasterPowerIcon"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:layout_gravity="center"
+                    android:contentDescription="@string/home_master_title"
+                    android:src="@drawable/ic_power"
+                    android:tint="@color/text_secondary" />
+            </FrameLayout>
+
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginEnd="16dp"
+                android:layout_marginHorizontal="14dp"
                 android:layout_weight="1"
                 android:orientation="vertical">
 
@@ -83,23 +110,98 @@
                     android:textSize="18sp"
                     android:textStyle="bold" />
 
-                <TextView
-                    android:id="@+id/tvMasterStatusDesc"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="关闭状态 · 开启后将跟随车机日夜模式自动切换壁纸"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="13sp" />
-
-                <TextView
-                    android:id="@+id/tvMasterSubHint"
+                <!-- 极简状态徽章行 -->
+                <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:text="尚未切换壁纸"
-                    android:textColor="@color/text_muted"
-                    android:textSize="12sp" />
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="24dp"
+                        android:background="@drawable/bg_pill_status"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="9dp">
+
+                        <View
+                            android:id="@+id/viewMasterStatusDot"
+                            android:layout_width="7dp"
+                            android:layout_height="7dp"
+                            android:background="@drawable/dot_status" />
+
+                        <TextView
+                            android:id="@+id/tvMasterStatusBadge"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="6dp"
+                            android:text="已关闭"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/chipBackupState"
+                        android:layout_width="wrap_content"
+                        android:layout_height="24dp"
+                        android:layout_marginStart="8dp"
+                        android:background="@drawable/bg_chip_success"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="9dp"
+                        android:visibility="gone">
+
+                        <ImageView
+                            android:layout_width="12dp"
+                            android:layout_height="12dp"
+                            android:contentDescription="已备份原壁纸"
+                            android:src="@drawable/ic_shield_check"
+                            android:tint="@color/status_success" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="4dp"
+                            android:text="已备份"
+                            android:textColor="@color/status_success"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/chipApplyWarning"
+                        android:layout_width="wrap_content"
+                        android:layout_height="24dp"
+                        android:layout_marginStart="8dp"
+                        android:background="@drawable/bg_chip_warning"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="9dp"
+                        android:visibility="gone">
+
+                        <ImageView
+                            android:layout_width="12dp"
+                            android:layout_height="12dp"
+                            android:contentDescription="异常提示"
+                            android:src="@drawable/ic_alert_triangle"
+                            android:tint="@color/status_warning" />
+
+                        <TextView
+                            android:id="@+id/tvApplyWarningBadge"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="4dp"
+                            android:text="切换异常"
+                            android:textColor="@color/status_warning"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+                </LinearLayout>
             </LinearLayout>
 
             <Switch
@@ -113,7 +215,7 @@
                 android:track="@drawable/switch_track" />
         </LinearLayout>
 
-        <!-- 卡片 2：切换模式卡片 -->
+        <!-- 卡片 2：切换模式卡片（用图标与能力徽章替代大段描述） -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -156,20 +258,30 @@
                         android:gravity="center_vertical"
                         android:orientation="horizontal">
 
-                        <ImageView
-                            android:id="@+id/ivModeStaticIcon"
-                            android:layout_width="22dp"
-                            android:layout_height="22dp"
-                            android:contentDescription="@string/home_mode_static_title"
-                            android:src="@drawable/ic_mode_static"
-                            android:tint="@color/accent_primary" />
+                        <FrameLayout
+                            android:id="@+id/boxModeStaticIcon"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:background="@drawable/bg_icon_badge">
+
+                            <ImageView
+                                android:id="@+id/ivModeStaticIcon"
+                                android:layout_width="19dp"
+                                android:layout_height="19dp"
+                                android:layout_gravity="center"
+                                android:contentDescription="@string/home_mode_static_title"
+                                android:src="@drawable/ic_mode_static"
+                                android:tint="@color/accent_primary" />
+                        </FrameLayout>
 
                         <TextView
                             android:id="@+id/tvModeStaticTitle"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_marginStart="8dp"
+                            android:layout_marginStart="10dp"
                             android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:maxLines="1"
                             android:text="@string/home_mode_static_title"
                             android:textColor="@color/text_primary"
                             android:textSize="15sp"
@@ -184,14 +296,63 @@
                             android:tint="@color/accent_primary" />
                     </LinearLayout>
 
-                    <TextView
+                    <!-- 能力标签行：图片 / 自动备份 -->
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:lineSpacingExtra="2dp"
-                        android:text="@string/home_mode_static_desc"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
+                        android:layout_marginTop="12dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="24dp"
+                            android:background="@drawable/bg_chip_subtle"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingHorizontal="8dp">
+
+                            <ImageView
+                                android:layout_width="12dp"
+                                android:layout_height="12dp"
+                                android:contentDescription="@string/tag_image"
+                                android:src="@drawable/ic_mode_static"
+                                android:tint="@color/text_secondary" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="4dp"
+                                android:text="@string/tag_image"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="24dp"
+                            android:layout_marginStart="6dp"
+                            android:background="@drawable/bg_chip_subtle"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingHorizontal="8dp">
+
+                            <ImageView
+                                android:layout_width="12dp"
+                                android:layout_height="12dp"
+                                android:contentDescription="@string/tag_backup"
+                                android:src="@drawable/ic_shield_check"
+                                android:tint="@color/text_secondary" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="4dp"
+                                android:text="@string/tag_backup"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+                    </LinearLayout>
                 </LinearLayout>
 
                 <!-- 选项 B：动态壁纸模式 -->
@@ -212,20 +373,30 @@
                         android:gravity="center_vertical"
                         android:orientation="horizontal">
 
-                        <ImageView
-                            android:id="@+id/ivModeLiveIcon"
-                            android:layout_width="22dp"
-                            android:layout_height="22dp"
-                            android:contentDescription="@string/home_mode_live_title"
-                            android:src="@drawable/ic_mode_live"
-                            android:tint="@color/text_secondary" />
+                        <FrameLayout
+                            android:id="@+id/boxModeLiveIcon"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:background="@drawable/bg_icon_badge">
+
+                            <ImageView
+                                android:id="@+id/ivModeLiveIcon"
+                                android:layout_width="19dp"
+                                android:layout_height="19dp"
+                                android:layout_gravity="center"
+                                android:contentDescription="@string/home_mode_live_title"
+                                android:src="@drawable/ic_mode_live"
+                                android:tint="@color/text_secondary" />
+                        </FrameLayout>
 
                         <TextView
                             android:id="@+id/tvModeLiveTitle"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_marginStart="8dp"
+                            android:layout_marginStart="10dp"
                             android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:maxLines="1"
                             android:text="@string/home_mode_live_title"
                             android:textColor="@color/text_primary"
                             android:textSize="15sp"
@@ -241,18 +412,92 @@
                             android:visibility="gone" />
                     </LinearLayout>
 
-                    <TextView
+                    <!-- 能力标签行：图片 / 视频 / 渐变 -->
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:lineSpacingExtra="2dp"
-                        android:text="@string/home_mode_live_desc"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
+                        android:layout_marginTop="12dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="24dp"
+                            android:background="@drawable/bg_chip_subtle"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingHorizontal="8dp">
+
+                            <ImageView
+                                android:layout_width="12dp"
+                                android:layout_height="12dp"
+                                android:contentDescription="@string/tag_image"
+                                android:src="@drawable/ic_mode_static"
+                                android:tint="@color/text_secondary" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="4dp"
+                                android:text="@string/tag_image"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="24dp"
+                            android:layout_marginStart="6dp"
+                            android:background="@drawable/bg_chip_subtle"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingHorizontal="8dp">
+
+                            <ImageView
+                                android:layout_width="12dp"
+                                android:layout_height="12dp"
+                                android:contentDescription="@string/tag_video"
+                                android:src="@drawable/ic_video"
+                                android:tint="@color/text_secondary" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="4dp"
+                                android:text="@string/tag_video"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="24dp"
+                            android:layout_marginStart="6dp"
+                            android:background="@drawable/bg_chip_subtle"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingHorizontal="8dp">
+
+                            <ImageView
+                                android:layout_width="12dp"
+                                android:layout_height="12dp"
+                                android:contentDescription="@string/tag_fade"
+                                android:src="@drawable/ic_sparkles"
+                                android:tint="@color/text_secondary" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="4dp"
+                                android:text="@string/tag_fade"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+                    </LinearLayout>
                 </LinearLayout>
             </LinearLayout>
 
-            <!-- 动态壁纸激活提示条（仅选择动态壁纸模式时显示） -->
+            <!-- 动态壁纸激活状态条（仅选择动态壁纸模式时显示） -->
             <LinearLayout
                 android:id="@+id/layoutLiveWallpaperAction"
                 android:layout_width="match_parent"
@@ -262,33 +507,60 @@
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
                 android:paddingHorizontal="14dp"
-                android:paddingVertical="10dp"
+                android:paddingVertical="9dp"
                 android:visibility="gone">
+
+                <ImageView
+                    android:id="@+id/ivLiveWallpaperStateIcon"
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:contentDescription="动态壁纸状态"
+                    android:src="@drawable/ic_check_circle"
+                    android:tint="@color/status_success" />
 
                 <TextView
                     android:id="@+id/tvLiveWallpaperState"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
                     android:layout_weight="1"
-                    android:text="动态壁纸服务状态"
+                    android:text="已激活"
                     android:textColor="@color/text_secondary"
-                    android:textSize="13sp" />
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
 
-                <Button
+                <LinearLayout
                     android:id="@+id/btnActivateLiveWallpaper"
                     android:layout_width="wrap_content"
-                    android:layout_height="36dp"
+                    android:layout_height="34dp"
                     android:layout_marginStart="10dp"
                     android:background="@drawable/bg_btn_native_primary"
-                    android:paddingHorizontal="14dp"
-                    android:text="@string/btn_activate_live_wallpaper"
-                    android:textAllCaps="false"
-                    android:textColor="#FFFFFF"
-                    android:textSize="13sp" />
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="12dp">
+
+                    <ImageView
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:contentDescription="@string/btn_activate_live_wallpaper"
+                        android:src="@drawable/ic_external_link"
+                        android:tint="#FFFFFF" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="5dp"
+                        android:text="@string/btn_activate_live_wallpaper"
+                        android:textColor="#FFFFFF"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
             </LinearLayout>
         </LinearLayout>
 
-        <!-- 卡片 3：当前壁纸概览 -->
+        <!-- 卡片 3：壁纸概览（纯视觉预览卡，图标叠加状态，无多余说明文字） -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -322,12 +594,13 @@
                     android:clickable="true"
                     android:focusable="true"
                     android:orientation="vertical"
-                    android:padding="12dp">
+                    android:padding="10dp">
 
                     <FrameLayout
+                        android:id="@+id/frameHomeDaySlot"
                         android:layout_width="match_parent"
-                        android:layout_height="136dp"
-                        android:background="@drawable/bg_preview_placeholder">
+                        android:layout_height="164dp"
+                        android:background="@drawable/bg_empty_slot">
 
                         <ImageView
                             android:id="@+id/ivHomeDayPreview"
@@ -336,64 +609,152 @@
                             android:contentDescription="日间壁纸预览"
                             android:scaleType="centerCrop" />
 
-                        <TextView
-                            android:id="@+id/tvHomeDayEmptyHint"
+                        <!-- 左上：日间标识 -->
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="26dp"
+                            android:layout_gravity="top|start"
+                            android:layout_margin="8dp"
+                            android:background="@drawable/bg_preview_overlay_pill"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingHorizontal="9dp">
+
+                            <ImageView
+                                android:layout_width="13dp"
+                                android:layout_height="13dp"
+                                android:contentDescription="日间"
+                                android:src="@drawable/ic_sun"
+                                android:tint="#FFFFFF" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="4dp"
+                                android:text="日间"
+                                android:textColor="#FFFFFF"
+                                android:textSize="11sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <!-- 右上：策略图标 + 数量 -->
+                        <LinearLayout
+                            android:id="@+id/badgeHomeDayPolicy"
+                            android:layout_width="wrap_content"
+                            android:layout_height="26dp"
+                            android:layout_gravity="top|end"
+                            android:layout_margin="8dp"
+                            android:background="@drawable/bg_preview_overlay_pill"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingHorizontal="9dp"
+                            android:visibility="gone">
+
+                            <ImageView
+                                android:id="@+id/ivHomeDayPolicyIcon"
+                                android:layout_width="12dp"
+                                android:layout_height="12dp"
+                                android:contentDescription="切换策略"
+                                android:src="@drawable/ic_strategy_fixed"
+                                android:tint="#FFFFFF" />
+
+                            <TextView
+                                android:id="@+id/tvHomeDayPolicyCount"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="4dp"
+                                android:text="0"
+                                android:textColor="#FFFFFF"
+                                android:textSize="11sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <!-- 左下：视频标识 -->
+                        <LinearLayout
+                            android:id="@+id/badgeHomeDayVideo"
+                            android:layout_width="wrap_content"
+                            android:layout_height="24dp"
+                            android:layout_gravity="bottom|start"
+                            android:layout_margin="8dp"
+                            android:background="@drawable/bg_preview_overlay_pill"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingHorizontal="8dp"
+                            android:visibility="gone">
+
+                            <ImageView
+                                android:layout_width="10dp"
+                                android:layout_height="10dp"
+                                android:contentDescription="视频"
+                                android:src="@drawable/ic_play"
+                                android:tint="#FFFFFF" />
+
+                            <TextView
+                                android:id="@+id/tvHomeDayVideoDuration"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="4dp"
+                                android:text="00:00"
+                                android:textColor="#FFFFFF"
+                                android:textSize="11sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <!-- 空状态可视化占位 -->
+                        <LinearLayout
+                            android:id="@+id/layoutHomeDayEmpty"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_gravity="center"
                             android:gravity="center"
-                            android:text="尚未添加日间壁纸\n点击前往上传"
-                            android:textColor="@color/text_muted"
-                            android:textSize="13sp" />
+                            android:orientation="vertical">
+
+                            <ImageView
+                                android:id="@+id/ivHomeDayEmptyIcon"
+                                android:layout_width="32dp"
+                                android:layout_height="32dp"
+                                android:contentDescription="添加日间壁纸"
+                                android:src="@drawable/ic_add_photo"
+                                android:tint="@color/text_muted" />
+
+                            <TextView
+                                android:id="@+id/tvHomeDayEmptyLabel"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp"
+                                android:text="添加日间"
+                                android:textColor="@color/text_muted"
+                                android:textSize="12sp" />
+                        </LinearLayout>
                     </FrameLayout>
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
+                        android:layout_marginTop="8dp"
                         android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <ImageView
-                            android:layout_width="16dp"
-                            android:layout_height="16dp"
-                            android:contentDescription="日间"
-                            android:src="@drawable/ic_sun"
-                            android:tint="@color/accent_primary" />
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="4dp">
 
                         <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="6dp"
-                            android:text="日间壁纸"
-                            android:textColor="@color/text_primary"
-                            android:textSize="14sp"
-                            android:textStyle="bold" />
-
-                        <View
+                            android:id="@+id/tvHomeDayName"
                             android:layout_width="0dp"
-                            android:layout_height="1dp"
-                            android:layout_weight="1" />
-
-                        <TextView
-                            android:id="@+id/tvHomeDayPolicy"
-                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="未添加"
+                            android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:text="未设置"
                             android:textColor="@color/text_secondary"
                             android:textSize="12sp" />
-                    </LinearLayout>
 
-                    <TextView
-                        android:id="@+id/tvHomeDayName"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:ellipsize="end"
-                        android:maxLines="1"
-                        android:text="点击前往配置"
-                        android:textColor="@color/text_muted"
-                        android:textSize="12sp" />
+                        <ImageView
+                            android:layout_width="15dp"
+                            android:layout_height="15dp"
+                            android:layout_marginStart="6dp"
+                            android:contentDescription="前往管理"
+                            android:src="@drawable/ic_chevron_right"
+                            android:tint="@color/text_muted" />
+                    </LinearLayout>
                 </LinearLayout>
 
                 <!-- 夜间壁纸概览 -->
@@ -406,12 +767,13 @@
                     android:clickable="true"
                     android:focusable="true"
                     android:orientation="vertical"
-                    android:padding="12dp">
+                    android:padding="10dp">
 
                     <FrameLayout
+                        android:id="@+id/frameHomeNightSlot"
                         android:layout_width="match_parent"
-                        android:layout_height="136dp"
-                        android:background="@drawable/bg_preview_placeholder">
+                        android:layout_height="164dp"
+                        android:background="@drawable/bg_empty_slot">
 
                         <ImageView
                             android:id="@+id/ivHomeNightPreview"
@@ -420,64 +782,152 @@
                             android:contentDescription="夜间壁纸预览"
                             android:scaleType="centerCrop" />
 
-                        <TextView
-                            android:id="@+id/tvHomeNightEmptyHint"
+                        <!-- 左上：夜间标识 -->
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="26dp"
+                            android:layout_gravity="top|start"
+                            android:layout_margin="8dp"
+                            android:background="@drawable/bg_preview_overlay_pill"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingHorizontal="9dp">
+
+                            <ImageView
+                                android:layout_width="13dp"
+                                android:layout_height="13dp"
+                                android:contentDescription="夜间"
+                                android:src="@drawable/ic_moon"
+                                android:tint="#FFFFFF" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="4dp"
+                                android:text="夜间"
+                                android:textColor="#FFFFFF"
+                                android:textSize="11sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <!-- 右上：策略图标 + 数量 -->
+                        <LinearLayout
+                            android:id="@+id/badgeHomeNightPolicy"
+                            android:layout_width="wrap_content"
+                            android:layout_height="26dp"
+                            android:layout_gravity="top|end"
+                            android:layout_margin="8dp"
+                            android:background="@drawable/bg_preview_overlay_pill"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingHorizontal="9dp"
+                            android:visibility="gone">
+
+                            <ImageView
+                                android:id="@+id/ivHomeNightPolicyIcon"
+                                android:layout_width="12dp"
+                                android:layout_height="12dp"
+                                android:contentDescription="切换策略"
+                                android:src="@drawable/ic_strategy_fixed"
+                                android:tint="#FFFFFF" />
+
+                            <TextView
+                                android:id="@+id/tvHomeNightPolicyCount"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="4dp"
+                                android:text="0"
+                                android:textColor="#FFFFFF"
+                                android:textSize="11sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <!-- 左下：视频标识 -->
+                        <LinearLayout
+                            android:id="@+id/badgeHomeNightVideo"
+                            android:layout_width="wrap_content"
+                            android:layout_height="24dp"
+                            android:layout_gravity="bottom|start"
+                            android:layout_margin="8dp"
+                            android:background="@drawable/bg_preview_overlay_pill"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingHorizontal="8dp"
+                            android:visibility="gone">
+
+                            <ImageView
+                                android:layout_width="10dp"
+                                android:layout_height="10dp"
+                                android:contentDescription="视频"
+                                android:src="@drawable/ic_play"
+                                android:tint="#FFFFFF" />
+
+                            <TextView
+                                android:id="@+id/tvHomeNightVideoDuration"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="4dp"
+                                android:text="00:00"
+                                android:textColor="#FFFFFF"
+                                android:textSize="11sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <!-- 空状态可视化占位 -->
+                        <LinearLayout
+                            android:id="@+id/layoutHomeNightEmpty"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_gravity="center"
                             android:gravity="center"
-                            android:text="尚未添加夜间壁纸\n点击前往上传"
-                            android:textColor="@color/text_muted"
-                            android:textSize="13sp" />
+                            android:orientation="vertical">
+
+                            <ImageView
+                                android:id="@+id/ivHomeNightEmptyIcon"
+                                android:layout_width="32dp"
+                                android:layout_height="32dp"
+                                android:contentDescription="添加夜间壁纸"
+                                android:src="@drawable/ic_add_photo"
+                                android:tint="@color/text_muted" />
+
+                            <TextView
+                                android:id="@+id/tvHomeNightEmptyLabel"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp"
+                                android:text="添加夜间"
+                                android:textColor="@color/text_muted"
+                                android:textSize="12sp" />
+                        </LinearLayout>
                     </FrameLayout>
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
+                        android:layout_marginTop="8dp"
                         android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <ImageView
-                            android:layout_width="16dp"
-                            android:layout_height="16dp"
-                            android:contentDescription="夜间"
-                            android:src="@drawable/ic_moon"
-                            android:tint="@color/accent_primary" />
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="4dp">
 
                         <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="6dp"
-                            android:text="夜间壁纸"
-                            android:textColor="@color/text_primary"
-                            android:textSize="14sp"
-                            android:textStyle="bold" />
-
-                        <View
+                            android:id="@+id/tvHomeNightName"
                             android:layout_width="0dp"
-                            android:layout_height="1dp"
-                            android:layout_weight="1" />
-
-                        <TextView
-                            android:id="@+id/tvHomeNightPolicy"
-                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="未添加"
+                            android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:text="未设置"
                             android:textColor="@color/text_secondary"
                             android:textSize="12sp" />
-                    </LinearLayout>
 
-                    <TextView
-                        android:id="@+id/tvHomeNightName"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:ellipsize="end"
-                        android:maxLines="1"
-                        android:text="点击前往配置"
-                        android:textColor="@color/text_muted"
-                        android:textSize="12sp" />
+                        <ImageView
+                            android:layout_width="15dp"
+                            android:layout_height="15dp"
+                            android:layout_marginStart="6dp"
+                            android:contentDescription="前往管理"
+                            android:src="@drawable/ic_chevron_right"
+                            android:tint="@color/text_muted" />
+                    </LinearLayout>
                 </LinearLayout>
             </LinearLayout>
         </LinearLayout>

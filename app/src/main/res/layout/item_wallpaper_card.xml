@@ -9,7 +9,7 @@
 
     <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="140dp"
+        android:layout_height="148dp"
         android:background="@drawable/bg_preview_placeholder">
 
         <ImageView
@@ -19,61 +19,110 @@
             android:contentDescription="壁纸缩略图"
             android:scaleType="centerCrop" />
 
-        <TextView
-            android:id="@+id/tvItemBadge"
+        <!-- 左上：使用中 / 轮换 图标徽章 -->
+        <LinearLayout
+            android:id="@+id/layoutItemBadge"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="24dp"
             android:layout_gravity="top|start"
             android:layout_margin="8dp"
             android:background="@drawable/bg_pill_primary"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="4dp"
-            android:text="使用中"
-            android:textColor="#FFFFFF"
-            android:textSize="11sp"
-            android:textStyle="bold"
-            android:visibility="gone" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="9dp"
+            android:visibility="gone">
 
-        <TextView
-            android:id="@+id/tvItemMediaTag"
+            <ImageView
+                android:id="@+id/ivItemBadgeIcon"
+                android:layout_width="12dp"
+                android:layout_height="12dp"
+                android:contentDescription="生效状态"
+                android:src="@drawable/ic_check_circle"
+                android:tint="#FFFFFF" />
+
+            <TextView
+                android:id="@+id/tvItemBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:text="使用中"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- 左下：视频时长 SVG 播放图标徽章 -->
+        <LinearLayout
+            android:id="@+id/layoutItemMediaTag"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="24dp"
             android:layout_gravity="bottom|start"
             android:layout_margin="8dp"
             android:background="@drawable/bg_pill_video"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
             android:paddingHorizontal="8dp"
-            android:paddingVertical="3dp"
-            android:text="▶ 00:00"
-            android:textColor="#FFFFFF"
-            android:textSize="11sp"
-            android:textStyle="bold"
-            android:visibility="gone" />
+            android:visibility="gone">
 
-        <TextView
-            android:id="@+id/tvItemDisabledOverlay"
+            <ImageView
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:contentDescription="视频"
+                android:src="@drawable/ic_play"
+                android:tint="#FFFFFF" />
+
+            <TextView
+                android:id="@+id/tvItemMediaTag"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:text="00:00"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- 居中：仅动态模式可用 锁形图标徽章 -->
+        <LinearLayout
+            android:id="@+id/layoutItemDisabledOverlay"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="28dp"
             android:layout_gravity="center"
             android:background="@drawable/bg_pill_video"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
             android:paddingHorizontal="10dp"
-            android:paddingVertical="4dp"
-            android:text="仅动态模式可用"
-            android:textColor="#FFFFFF"
-            android:textSize="11sp"
-            android:textStyle="bold"
-            android:visibility="gone" />
+            android:visibility="gone">
 
+            <ImageView
+                android:layout_width="13dp"
+                android:layout_height="13dp"
+                android:contentDescription="仅动态模式"
+                android:src="@drawable/ic_lock"
+                android:tint="#FFFFFF" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="5dp"
+                android:text="仅动态模式"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- 右上：删除图标按钮 -->
         <ImageButton
             android:id="@+id/btnItemDelete"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
             android:layout_gravity="top|end"
             android:layout_margin="8dp"
             android:background="@drawable/bg_btn_circle_delete"
             android:contentDescription="删除壁纸"
             android:padding="7dp"
             android:scaleType="centerInside"
-            android:src="@drawable/ic_close"
+            android:src="@drawable/ic_trash"
             android:tint="#FFFFFF" />
     </FrameLayout>
 
@@ -99,7 +148,7 @@
         android:ellipsize="end"
         android:maxLines="1"
         android:paddingHorizontal="4dp"
-        android:text="2560x1600"
+        android:text="2560×1600"
         android:textColor="@color/text_muted"
         android:textSize="11sp" />
 </LinearLayout>
