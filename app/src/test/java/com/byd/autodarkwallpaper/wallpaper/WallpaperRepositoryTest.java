@@ -208,7 +208,7 @@ public class WallpaperRepositoryTest {
         // 额外导入一张静态图片，并将动态模式固定选中保持在视频上
         Uri imgUri = createTempImageUri("day_img.jpg", 320, 200, Color.BLUE);
         WallpaperRepository.ImportResult imgRes =
-                WallpaperRepository.importWallpapersFromUris(context, Collections.singletonList(imgUri), false, true);
+                WallpaperRepository.importWallpapersFromUris(context, Collections.singletonList(imgUri), false);
         String imgId = imgRes.importedItems.get(0).id;
         prefs.setSelectionMode(false, AppPrefs.SELECT_FIXED);
         prefs.setSelectedWallpaperId(false, video.id);
@@ -233,17 +233,19 @@ public class WallpaperRepositoryTest {
     }
 
     @Test
-    public void importWallpapers_staticModeRejectsVideoUri() throws Exception {
+    public void importWallpapers_staticModeDoesNotRejectVideoUriByMode() throws Exception {
+        prefs.setWallpaperMode(AppPrefs.MODE_STATIC_MANAGER);
         File mp4 = tempFolder.newFile("sample_clip.mp4");
         try (FileOutputStream fos = new FileOutputStream(mp4)) {
             fos.write(new byte[]{0, 0, 0, 8});
         }
         try {
             WallpaperRepository.importWallpapersFromUris(
-                    context, Collections.singletonList(Uri.fromFile(mp4)), false, false);
-            org.junit.Assert.fail("静态模式下应拒绝导入视频");
+                    context, Collections.singletonList(Uri.fromFile(mp4)), false);
+            org.junit.Assert.fail("无效的 8 字节示例文件应因视频解析失败而抛出异常");
         } catch (IOException expected) {
-            assertTrue(expected.getMessage().contains("动态壁纸模式"));
+            assertFalse("静态模式下不应因模式限制拒绝视频导入",
+                    expected.getMessage() != null && expected.getMessage().contains("不支持视频壁纸"));
         }
     }
 

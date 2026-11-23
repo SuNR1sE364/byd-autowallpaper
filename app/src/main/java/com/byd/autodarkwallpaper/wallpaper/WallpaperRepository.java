@@ -49,7 +49,7 @@ import java.util.UUID;
 
 /**
  * 日常壁纸库与原系统壁纸备份仓库。
- * 负责日/夜多壁纸管理（图片及动态模式视频）、指定或随机选取、旧版自定义壁纸迁移以及直接修改模式下的原壁纸备份/复原。
+ * 负责日/夜多壁纸管理（图片及视频）、指定或随机选取、旧版自定义壁纸迁移以及直接修改模式下的原壁纸备份/复原。
  */
 public final class WallpaperRepository {
 
@@ -355,11 +355,6 @@ public final class WallpaperRepository {
 
     public static synchronized ImportResult importWallpapersFromUris(
             Context context, List<Uri> uris, boolean isDark) throws IOException {
-        return importWallpapersFromUris(context, uris, isDark, true);
-    }
-
-    public static synchronized ImportResult importWallpapersFromUris(
-            Context context, List<Uri> uris, boolean isDark, boolean allowVideo) throws IOException {
         if (uris == null || uris.isEmpty()) {
             throw new IOException("未选择任何壁纸文件");
         }
@@ -375,9 +370,6 @@ public final class WallpaperRepository {
             try {
                 WallpaperItem item;
                 if (isVideoUri(appCtx, uri)) {
-                    if (!allowVideo) {
-                        throw new IOException("直接修改壁纸模式不支持视频壁纸，请切换为动态壁纸模式");
-                    }
                     item = importVideoFromUri(appCtx, uri, isDark);
                 } else {
                     item = decodeAndSaveUri(appCtx, uri, isDark);
@@ -402,15 +394,28 @@ public final class WallpaperRepository {
         AppPrefs prefs = new AppPrefs(appCtx);
         String existingSelected = prefs.getSelectedWallpaperId(isDark);
         if (existingSelected == null || findById(targetList, existingSelected) == null) {
-            WallpaperItem first = result.importedItems.get(0);
-            prefs.setSelectedWallpaperId(isDark, first.id);
-            prefs.setActiveWallpaperId(isDark, first.id);
+            WallpaperItem defaultSelection = findDefaultImportedSelection(
+                    result.importedItems, prefs.getWallpaperMode() == AppPrefs.MODE_STATIC_MANAGER);
+            prefs.setSelectedWallpaperId(isDark, defaultSelection.id);
+            prefs.setActiveWallpaperId(isDark, defaultSelection.id);
         }
 
         writeLibraryLocked(appCtx, data);
         AppLogger.i(TAG, "导入" + (isDark ? "夜间" : "日间") + "壁纸完成: 成功 "
                 + result.importedItems.size() + " 项, 失败 " + result.errorMessages.size() + " 项");
         return result;
+    }
+
+    private static WallpaperItem findDefaultImportedSelection(
+            List<WallpaperItem> importedItems, boolean preferImage) {
+        if (preferImage) {
+            for (WallpaperItem item : importedItems) {
+                if (!item.isVideo()) {
+                    return item;
+                }
+            }
+        }
+        return importedItems.get(0);
     }
 
     public static synchronized boolean deleteWallpaper(Context context, boolean isDark, String itemId)

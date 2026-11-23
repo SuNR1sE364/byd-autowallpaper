@@ -1198,7 +1198,7 @@ public class MainActivity extends Activity {
         styleSegmentedTab(tabStrategyFixed, ivTabStrategyFixed, tvTabStrategyFixed, !isRandom);
         styleSegmentedTab(tabStrategyRandom, ivTabStrategyRandom, tvTabStrategyRandom, isRandom);
 
-        tvEmptyAddWallpaper.setText(isLiveMode ? "添加图片或视频" : "添加图片");
+        tvEmptyAddWallpaper.setText("添加图片或视频");
 
         List<WallpaperRepository.WallpaperItem> activeList = editingNight ? nightItems : dayItems;
         if (activeList.isEmpty()) {
@@ -1376,15 +1376,10 @@ public class MainActivity extends Activity {
 
     private void launchWallpaperPicker() {
         try {
-            boolean isLiveMode = (prefs.getWallpaperMode() == AppPrefs.MODE_LIVE_SERVICE);
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
-            if (isLiveMode) {
-                intent.setType("*/*");
-                intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/*", "video/*"});
-            } else {
-                intent.setType("image/*");
-            }
+            intent.setType("*/*");
+            intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/*", "video/*"});
             intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
             startActivityForResult(intent, REQ_PICK_WALLPAPERS);
         } catch (Throwable t) {
@@ -1632,11 +1627,6 @@ public class MainActivity extends Activity {
                 return;
             }
             final boolean targetNight = editingNight;
-            final boolean allowVideo = (prefs.getWallpaperMode() == AppPrefs.MODE_LIVE_SERVICE);
-            if (!allowVideo) {
-                performImportUris(uris, targetNight, false);
-                return;
-            }
             ioExecutor.execute(() -> {
                 final List<WallpaperRepository.VideoInspection> highSpecWarnings =
                         WallpaperRepository.inspectHighSpecVideos(MainActivity.this, uris);
@@ -1645,7 +1635,7 @@ public class MainActivity extends Activity {
                         return;
                     }
                     if (highSpecWarnings.isEmpty()) {
-                        performImportUris(uris, targetNight, true);
+                        performImportUris(uris, targetNight);
                     } else {
                         showHighSpecVideoWarningDialog(uris, highSpecWarnings, targetNight);
                     }
@@ -1726,20 +1716,20 @@ public class MainActivity extends Activity {
         AlertDialog.Builder builder = new AlertDialog.Builder(this)
                 .setTitle("高规格视频提示")
                 .setMessage(msg.toString().trim())
-                .setPositiveButton("仍然导入", (d, w) -> performImportUris(allUris, targetNight, true))
+                .setPositiveButton("仍然导入", (d, w) -> performImportUris(allUris, targetNight))
                 .setNegativeButton("取消", null);
         if (!normalUris.isEmpty()) {
-            builder.setNeutralButton("跳过高规格视频", (d, w) -> performImportUris(normalUris, targetNight, true));
+            builder.setNeutralButton("跳过高规格视频", (d, w) -> performImportUris(normalUris, targetNight));
         }
         builder.show();
     }
 
-    private void performImportUris(final List<Uri> uris, final boolean targetNight, final boolean allowVideo) {
+    private void performImportUris(final List<Uri> uris, final boolean targetNight) {
         Toast.makeText(this, "正在导入 " + uris.size() + " 个壁纸文件...", Toast.LENGTH_SHORT).show();
         ioExecutor.execute(() -> {
             try {
                 WallpaperRepository.ImportResult res =
-                        WallpaperRepository.importWallpapersFromUris(MainActivity.this, uris, targetNight, allowVideo);
+                        WallpaperRepository.importWallpapersFromUris(MainActivity.this, uris, targetNight);
                 runOnUiThread(() -> {
                     refreshWallpaperPage();
                     refreshHomeWallpaperOverviewAsync();
