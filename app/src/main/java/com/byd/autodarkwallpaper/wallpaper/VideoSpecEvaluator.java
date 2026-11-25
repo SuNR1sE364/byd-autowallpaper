@@ -1,4 +1,4 @@
-package com.byd.autodarkwallpaper.wallpaper;
+package com.sunr1se.byd.autowallpaper.wallpaper;
 
 import java.util.ArrayList;
 import java.util.Collections;

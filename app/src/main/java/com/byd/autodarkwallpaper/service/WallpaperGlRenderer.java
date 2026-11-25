@@ -1,4 +1,4 @@
-package com.byd.autodarkwallpaper.service;
+package com.sunr1se.byd.autowallpaper.service;
 
 import android.graphics.Bitmap;
 import android.graphics.SurfaceTexture;
@@ -17,7 +17,7 @@ import android.os.Looper;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 
-import com.byd.autodarkwallpaper.util.AppLogger;
+import com.sunr1se.byd.autowallpaper.util.AppLogger;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;

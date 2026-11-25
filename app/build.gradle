@@ -3,12 +3,12 @@ plugins {
 }
 
 android {
-    namespace 'com.byd.autodarkwallpaper'
+    namespace 'com.sunr1se.byd.autowallpaper'
     compileSdk = 37
     buildToolsVersion = '36.0.0'
 
     defaultConfig {
-        applicationId "com.byd.autodarkwallpaper"
+        applicationId "com.sunr1se.byd.autowallpaper"
         minSdk 28
         targetSdk 34
         versionCode 2

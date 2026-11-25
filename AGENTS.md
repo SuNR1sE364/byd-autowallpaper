@@ -3,7 +3,7 @@
 ## 1. 项目概览与技术栈
 
 - **应用名称**：深浅壁纸 / 自动深浅壁纸 (`BYD Auto Dark Wallpaper`)
-- **Application ID / Namespace**：`com.byd.autodarkwallpaper`
+- **Application ID / Namespace**：`com.sunr1se.byd.autowallpaper`
 - **当前版本**：`versionName = "2.0.1"`，`versionCode = 2`（见 `app/build.gradle`）
 - **SDK 与语言**：Java 11（无 Kotlin / Jetpack Compose，纯原生 Android View + XML 布局），`minSdk = 28`、`targetSdk = 34`、`compileSdk = 37`、`buildToolsVersion = '36.0.0'`
 - **核心依赖**：
@@ -72,7 +72,7 @@ byd-autodarkmode/
 ├── README.md                                        # 面向最终用户的安装与使用说明
 ├── AGENTS.md                                        # 面向开发者与 Coding Agent 的技术维护指南（本文件）
 └── app/
-    ├── build.gradle                                 # applicationId: com.byd.autodarkwallpaper, versionName: 2.0.1 (code 2)
+    ├── build.gradle                                 # applicationId: com.sunr1se.byd.autowallpaper, versionName: 2.0.1 (code 2)
     └── src/
         ├── main/
         │   ├── AndroidManifest.xml                  # 最小化权限、动态壁纸服务、specialUse 前台监控服务、自启广播

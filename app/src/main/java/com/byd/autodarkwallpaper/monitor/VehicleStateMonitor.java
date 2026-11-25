@@ -1,4 +1,4 @@
-package com.byd.autodarkwallpaper.monitor;
+package com.sunr1se.byd.autowallpaper.monitor;
 
 import android.app.UiModeManager;
 import android.content.BroadcastReceiver;
@@ -15,7 +15,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 
-import com.byd.autodarkwallpaper.util.AppLogger;
+import com.sunr1se.byd.autowallpaper.util.AppLogger;
 
 /**
  * 比亚迪车机日/夜模式状态监听器。

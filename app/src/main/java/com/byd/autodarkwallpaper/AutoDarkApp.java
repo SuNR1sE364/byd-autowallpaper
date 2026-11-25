@@ -1,10 +1,10 @@
-package com.byd.autodarkwallpaper;
+package com.sunr1se.byd.autowallpaper;
 
 import android.app.Application;
 import android.os.Build;
 
-import com.byd.autodarkwallpaper.util.AppLogger;
-import com.byd.autodarkwallpaper.wallpaper.WallpaperRepository;
+import com.sunr1se.byd.autowallpaper.util.AppLogger;
+import com.sunr1se.byd.autowallpaper.wallpaper.WallpaperRepository;
 
 /**
  * 应用入口：初始化日志并迁移历史自定义壁纸（若有）。

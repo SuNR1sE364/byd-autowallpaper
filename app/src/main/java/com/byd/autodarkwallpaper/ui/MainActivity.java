@@ -1,4 +1,4 @@
-package com.byd.autodarkwallpaper.ui;
+package com.sunr1se.byd.autowallpaper.ui;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
@@ -42,15 +42,15 @@ import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.byd.autodarkwallpaper.R;
-import com.byd.autodarkwallpaper.config.AppPrefs;
-import com.byd.autodarkwallpaper.monitor.VehicleStateMonitor;
-import com.byd.autodarkwallpaper.service.AutoDarkMonitorService;
-import com.byd.autodarkwallpaper.service.AutoDarkWallpaperService;
-import com.byd.autodarkwallpaper.util.AppLogger;
-import com.byd.autodarkwallpaper.wallpaper.VideoSpecEvaluator;
-import com.byd.autodarkwallpaper.wallpaper.WallpaperController;
-import com.byd.autodarkwallpaper.wallpaper.WallpaperRepository;
+import com.sunr1se.byd.autowallpaper.R;
+import com.sunr1se.byd.autowallpaper.config.AppPrefs;
+import com.sunr1se.byd.autowallpaper.monitor.VehicleStateMonitor;
+import com.sunr1se.byd.autowallpaper.service.AutoDarkMonitorService;
+import com.sunr1se.byd.autowallpaper.service.AutoDarkWallpaperService;
+import com.sunr1se.byd.autowallpaper.util.AppLogger;
+import com.sunr1se.byd.autowallpaper.wallpaper.VideoSpecEvaluator;
+import com.sunr1se.byd.autowallpaper.wallpaper.WallpaperController;
+import com.sunr1se.byd.autowallpaper.wallpaper.WallpaperRepository;
 
 import java.io.File;
 import java.util.ArrayList;

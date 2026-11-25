@@ -1,4 +1,4 @@
-package com.byd.autodarkwallpaper.wallpaper;
+package com.sunr1se.byd.autowallpaper.wallpaper;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -11,7 +11,7 @@ import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.net.Uri;
 
-import com.byd.autodarkwallpaper.config.AppPrefs;
+import com.sunr1se.byd.autowallpaper.config.AppPrefs;
 
 import org.junit.Before;
 import org.junit.Rule;

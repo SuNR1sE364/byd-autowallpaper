@@ -1,4 +1,4 @@
-package com.byd.autodarkwallpaper.receiver;
+package com.sunr1se.byd.autowallpaper.receiver;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -7,8 +7,8 @@ import static org.junit.Assert.assertNull;
 import android.app.Application;
 import android.content.Intent;
 
-import com.byd.autodarkwallpaper.config.AppPrefs;
-import com.byd.autodarkwallpaper.service.AutoDarkMonitorService;
+import com.sunr1se.byd.autowallpaper.config.AppPrefs;
+import com.sunr1se.byd.autowallpaper.service.AutoDarkMonitorService;
 
 import org.junit.Before;
 import org.junit.Test;

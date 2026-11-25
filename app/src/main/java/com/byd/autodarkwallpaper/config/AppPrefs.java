@@ -1,4 +1,4 @@
-package com.byd.autodarkwallpaper.config;
+package com.sunr1se.byd.autowallpaper.config;
 
 import android.content.Context;
 import android.content.SharedPreferences;

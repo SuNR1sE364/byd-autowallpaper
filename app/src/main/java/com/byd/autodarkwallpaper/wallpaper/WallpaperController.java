@@ -1,4 +1,4 @@
-package com.byd.autodarkwallpaper.wallpaper;
+package com.sunr1se.byd.autowallpaper.wallpaper;
 
 import android.app.WallpaperInfo;
 import android.app.WallpaperManager;
@@ -10,9 +10,9 @@ import android.graphics.BitmapFactory;
 import android.os.Handler;
 import android.os.Looper;
 
-import com.byd.autodarkwallpaper.config.AppPrefs;
-import com.byd.autodarkwallpaper.service.AutoDarkWallpaperService;
-import com.byd.autodarkwallpaper.util.AppLogger;
+import com.sunr1se.byd.autowallpaper.config.AppPrefs;
+import com.sunr1se.byd.autowallpaper.service.AutoDarkWallpaperService;
+import com.sunr1se.byd.autowallpaper.util.AppLogger;
 
 import java.io.File;
 import java.io.IOException;
@@ -29,9 +29,9 @@ public final class WallpaperController {
     private static final String TAG = "WallpaperCtrl";
 
     public static final String ACTION_WALLPAPER_STATE_CHANGED =
-            "com.byd.autodarkwallpaper.ACTION_WALLPAPER_STATE_CHANGED";
+            "com.sunr1se.byd.autowallpaper.ACTION_WALLPAPER_STATE_CHANGED";
     public static final String ACTION_WALLPAPER_IMAGES_RELOADED =
-            "com.byd.autodarkwallpaper.ACTION_WALLPAPER_IMAGES_RELOADED";
+            "com.sunr1se.byd.autowallpaper.ACTION_WALLPAPER_IMAGES_RELOADED";
     public static final String EXTRA_IS_DARK = "is_dark";
     public static final String EXTRA_ITEM_ID = "item_id";
 

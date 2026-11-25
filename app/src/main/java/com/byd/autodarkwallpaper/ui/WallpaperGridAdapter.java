@@ -1,4 +1,4 @@
-package com.byd.autodarkwallpaper.ui;
+package com.sunr1se.byd.autowallpaper.ui;
 
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -15,11 +15,11 @@ import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.TextView;
 
-import com.byd.autodarkwallpaper.R;
-import com.byd.autodarkwallpaper.config.AppPrefs;
-import com.byd.autodarkwallpaper.wallpaper.VideoSpecEvaluator;
-import com.byd.autodarkwallpaper.wallpaper.WallpaperController;
-import com.byd.autodarkwallpaper.wallpaper.WallpaperRepository;
+import com.sunr1se.byd.autowallpaper.R;
+import com.sunr1se.byd.autowallpaper.config.AppPrefs;
+import com.sunr1se.byd.autowallpaper.wallpaper.VideoSpecEvaluator;
+import com.sunr1se.byd.autowallpaper.wallpaper.WallpaperController;
+import com.sunr1se.byd.autowallpaper.wallpaper.WallpaperRepository;
 
 import java.io.File;
 import java.util.ArrayList;

@@ -1,12 +1,12 @@
-package com.byd.autodarkwallpaper.receiver;
+package com.sunr1se.byd.autowallpaper.receiver;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 
-import com.byd.autodarkwallpaper.config.AppPrefs;
-import com.byd.autodarkwallpaper.service.AutoDarkMonitorService;
-import com.byd.autodarkwallpaper.util.AppLogger;
+import com.sunr1se.byd.autowallpaper.config.AppPrefs;
+import com.sunr1se.byd.autowallpaper.service.AutoDarkMonitorService;
+import com.sunr1se.byd.autowallpaper.util.AppLogger;
 
 /**
  * 车机开机/上电广播接收器：按主页总开关状态自动拉起后台监控服务。

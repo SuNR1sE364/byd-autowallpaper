@@ -1,4 +1,4 @@
-package com.byd.autodarkwallpaper.service;
+package com.sunr1se.byd.autowallpaper.service;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
@@ -33,11 +33,11 @@ import androidx.media3.common.VideoSize;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.ExoPlayer;
 
-import com.byd.autodarkwallpaper.config.AppPrefs;
-import com.byd.autodarkwallpaper.monitor.VehicleStateMonitor;
-import com.byd.autodarkwallpaper.util.AppLogger;
-import com.byd.autodarkwallpaper.wallpaper.WallpaperController;
-import com.byd.autodarkwallpaper.wallpaper.WallpaperRepository;
+import com.sunr1se.byd.autowallpaper.config.AppPrefs;
+import com.sunr1se.byd.autowallpaper.monitor.VehicleStateMonitor;
+import com.sunr1se.byd.autowallpaper.util.AppLogger;
+import com.sunr1se.byd.autowallpaper.wallpaper.WallpaperController;
+import com.sunr1se.byd.autowallpaper.wallpaper.WallpaperRepository;
 
 import java.io.File;
 import java.util.Set;

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <wallpaper xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/live_wallpaper_description"
-    android:settingsActivity="com.byd.autodarkwallpaper.ui.MainActivity"
+    android:settingsActivity="com.sunr1se.byd.autowallpaper.ui.MainActivity"
     android:thumbnail="@drawable/ic_wallpaper_thumb" />

@@ -1,4 +1,4 @@
-package com.byd.autodarkwallpaper.service;
+package com.sunr1se.byd.autowallpaper.service;
 
 import static org.junit.Assert.assertEquals;
 

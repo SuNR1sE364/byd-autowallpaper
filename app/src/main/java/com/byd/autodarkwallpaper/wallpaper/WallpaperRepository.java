@@ -1,4 +1,4 @@
-package com.byd.autodarkwallpaper.wallpaper;
+package com.sunr1se.byd.autowallpaper.wallpaper;
 
 import android.Manifest;
 import android.app.WallpaperInfo;
@@ -24,8 +24,8 @@ import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
 import android.webkit.MimeTypeMap;
 
-import com.byd.autodarkwallpaper.config.AppPrefs;
-import com.byd.autodarkwallpaper.util.AppLogger;
+import com.sunr1se.byd.autowallpaper.config.AppPrefs;
+import com.sunr1se.byd.autowallpaper.util.AppLogger;
 
 import org.json.JSONArray;
 import org.json.JSONException;

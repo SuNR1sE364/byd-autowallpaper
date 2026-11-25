@@ -1,4 +1,4 @@
-package com.byd.autodarkwallpaper.service;
+package com.sunr1se.byd.autowallpaper.service;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -13,12 +13,12 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 
-import com.byd.autodarkwallpaper.R;
-import com.byd.autodarkwallpaper.config.AppPrefs;
-import com.byd.autodarkwallpaper.monitor.VehicleStateMonitor;
-import com.byd.autodarkwallpaper.ui.MainActivity;
-import com.byd.autodarkwallpaper.util.AppLogger;
-import com.byd.autodarkwallpaper.wallpaper.WallpaperController;
+import com.sunr1se.byd.autowallpaper.R;
+import com.sunr1se.byd.autowallpaper.config.AppPrefs;
+import com.sunr1se.byd.autowallpaper.monitor.VehicleStateMonitor;
+import com.sunr1se.byd.autowallpaper.ui.MainActivity;
+import com.sunr1se.byd.autowallpaper.util.AppLogger;
+import com.sunr1se.byd.autowallpaper.wallpaper.WallpaperController;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -33,9 +33,9 @@ public class AutoDarkMonitorService extends Service {
     private static final int NOTIFICATION_ID = 1008;
     private static final long QUIET_POLL_INTERVAL_MS = 2000L;
 
-    public static final String ACTION_START_MONITOR = "com.byd.autodarkwallpaper.ACTION_START_MONITOR";
-    public static final String ACTION_BOOT_START = "com.byd.autodarkwallpaper.ACTION_BOOT_START";
-    public static final String ACTION_CONFIG_UPDATED = "com.byd.autodarkwallpaper.ACTION_CONFIG_UPDATED";
+    public static final String ACTION_START_MONITOR = "com.sunr1se.byd.autowallpaper.ACTION_START_MONITOR";
+    public static final String ACTION_BOOT_START = "com.sunr1se.byd.autowallpaper.ACTION_BOOT_START";
+    public static final String ACTION_CONFIG_UPDATED = "com.sunr1se.byd.autowallpaper.ACTION_CONFIG_UPDATED";
 
     public interface MonitorObserver {
         void onMonitorStateChanged(boolean running,

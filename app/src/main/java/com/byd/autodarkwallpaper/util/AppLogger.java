@@ -1,4 +1,4 @@
-package com.byd.autodarkwallpaper.util;
+package com.sunr1se.byd.autowallpaper.util;
 
 import android.content.Context;
 import android.net.Uri;
@@ -8,7 +8,7 @@ import android.os.Looper;
 import android.provider.DocumentsContract;
 import android.util.Log;
 
-import com.byd.autodarkwallpaper.config.AppPrefs;
+import com.sunr1se.byd.autowallpaper.config.AppPrefs;
 
 import java.io.BufferedWriter;
 import java.io.File;
