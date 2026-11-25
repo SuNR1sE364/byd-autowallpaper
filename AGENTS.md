@@ -4,12 +4,12 @@
 
 - **应用名称**：深浅壁纸 / 自动深浅壁纸 (`BYD Auto Dark Wallpaper`)
 - **Application ID / Namespace**：`com.sunr1se.byd.autowallpaper`
-- **当前版本**：`versionName = "2.0.1"`，`versionCode = 2`（见 `app/build.gradle`）
+- **当前版本**：`versionName = "2.1.0"`，`versionCode = 2`（见 `app/build.gradle`）
 - **SDK 与语言**：Java 11（无 Kotlin / Jetpack Compose，纯原生 Android View + XML 布局），`minSdk = 28`、`targetSdk = 34`、`compileSdk = 37`、`buildToolsVersion = '36.0.0'`
 - **核心依赖**：
   - `androidx.media3:media3-exoplayer:1.11.1`
   - `androidx.annotation:annotation:1.9.1`
-- **测试框架**：`junit:junit:4.13.2` + `org.robolectric:robolectric:4.14.1`（搭配 `org.ow2.asm:asm*:9.9.1`）
+- **测试框架**：`junit:junit:4.13.2` + `org.robolectric:robolectric:4.16.1`（搭配 `org.ow2.asm:asm*:9.9.1`）
 
 ---
 
@@ -68,11 +68,14 @@ byd-autodarkmode/
 ├── .github/workflows/
 │   ├── ci.yml                                       # Push / PR 自动执行单元测试、Lint 与 Debug APK 构建
 │   └── release.yml                                  # Tag (v*) 或手动触发：测试、构建 Release APK 并发布 GitHub Release
+├── scripts/
+│   ├── release.ps1                                  # Windows PowerShell 交互式发版脚本（选版本、改版本号、提交、打 Tag 并推送）
+│   └── release.sh                                   # Bash / Git Bash / macOS / Linux 交互式发版脚本
 ├── build.gradle / settings.gradle / gradle.properties
 ├── README.md                                        # 面向最终用户的安装与使用说明
 ├── AGENTS.md                                        # 面向开发者与 Coding Agent 的技术维护指南（本文件）
 └── app/
-    ├── build.gradle                                 # applicationId: com.sunr1se.byd.autowallpaper, versionName: 2.0.1 (code 2)
+    ├── build.gradle                                 # applicationId: com.sunr1se.byd.autowallpaper, versionName: 2.1.0 (code 2)
     └── src/
         ├── main/
         │   ├── AndroidManifest.xml                  # 最小化权限、动态壁纸服务、specialUse 前台监控服务、自启广播
@@ -138,7 +141,10 @@ app/build/outputs/apk/debug/app-debug.apk
 ### GitHub CI/CD 流水线
 
 - **持续集成 (`.github/workflows/ci.yml`)**：每次推送到 `master` / `main` 分支、提交 Pull Request 或手动触发时，在 `ubuntu-latest`（JDK 21）上自动执行 `testDebugUnitTest`、`lintDebug` 和 `assembleDebug`，并上传测试报告、Lint 报告与 Debug APK 构件。
-- **自动发布 (`.github/workflows/release.yml`)**：推送 `v*` 标签（例如 `git tag v2.0.1 && git push origin v2.0.1`）或在 GitHub Actions 页面手动触发时，自动执行单元测试、构建 Release APK（`BYDAutoDarkWallpaper-<tag>.apk` 或 `-unsigned.apk`）、生成 `SHA256SUMS.txt` 并发布 GitHub Release。
+- **自动发布 (`.github/workflows/release.yml`)**：推送 `v*` 标签或通过脚本发布（也可在 GitHub Actions 页面手动触发）时，自动执行单元测试、构建 Release APK（`BYDAutoDarkWallpaper-<tag>.apk` 或 `-unsigned.apk`）、生成 `SHA256SUMS.txt` 并发布 GitHub Release（含 `-` 的预发布标签如 `-alpha.1` / `-beta.1` 会自动标记为 Pre-release）。
+  - **交互式发版脚本**（自动读取当前 `versionName` / `versionCode`，提供不变、patch/release、minor、major、alpha、beta 与自定义输入选项，修改 `app/build.gradle`、提交、创建附注 Tag 并推送）：
+    - Windows PowerShell：`.\scripts\release.ps1`（支持 `-DryRun` 演练）
+    - Git Bash / Linux / macOS：`./scripts/release.sh`（支持 `--dry-run` 演练）
   - 如需对 Release APK 自动签名，需在仓库 `Settings -> Secrets and variables -> Actions` 配置以下 4 个 Secrets（未配置时默认产出未签名 APK）：
     - `ANDROID_KEYSTORE_BASE64`（Keystore 文件的 Base64 编码）
     - `ANDROID_KEYSTORE_PASSWORD`
