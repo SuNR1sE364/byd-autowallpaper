@@ -8,7 +8,9 @@ import static org.junit.Assert.assertTrue;
 import android.app.Application;
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.net.Uri;
 
 import com.sunr1se.byd.autowallpaper.config.AppPrefs;
@@ -160,6 +162,53 @@ public class WallpaperControllerTest {
         assertEquals(WallpaperController.ACTION_WALLPAPER_STATE_CHANGED, broadcasts.get(0).getAction());
         assertEquals(video.id, broadcasts.get(0).getStringExtra(WallpaperController.EXTRA_ITEM_ID));
         assertTrue(broadcasts.get(0).getBooleanExtra(WallpaperController.EXTRA_IS_DARK, false));
+    }
+
+    @Test
+    public void decodeStaticAndSampledCroppedBitmap_decodesSelectedRegionAccurately() throws IOException {
+        File splitImg = tempFolder.newFile("split_red_blue.jpg");
+        Bitmap src = Bitmap.createBitmap(360, 600, Bitmap.Config.ARGB_8888);
+        try {
+            Canvas canvas = new Canvas(src);
+            Paint paint = new Paint();
+            paint.setColor(Color.RED);
+            canvas.drawRect(0, 0, 360, 300, paint);
+            paint.setColor(Color.BLUE);
+            canvas.drawRect(0, 300, 360, 600, paint);
+            try (FileOutputStream fos = new FileOutputStream(splitImg)) {
+                assertTrue(src.compress(Bitmap.CompressFormat.JPEG, 96, fos));
+            }
+        } finally {
+            src.recycle();
+        }
+
+        Bitmap fullDecoded = WallpaperController.decodeStaticWallpaperBitmap(splitImg, null);
+        assertNotNull(fullDecoded);
+        assertEquals(360, fullDecoded.getWidth());
+        assertEquals(600, fullDecoded.getHeight());
+        fullDecoded.recycle();
+
+        CropRect topCrop = new CropRect(0.1f, 0f, 0.9f, 0.4f);
+        Bitmap topStatic = WallpaperController.decodeStaticWallpaperBitmap(splitImg, topCrop);
+        assertNotNull(topStatic);
+        assertEquals(288, topStatic.getWidth());
+        assertEquals(240, topStatic.getHeight());
+        int topPx = topStatic.getPixel(topStatic.getWidth() / 2, topStatic.getHeight() / 2);
+        if (Color.alpha(topPx) != 0) {
+            assertTrue("上半区域应为红色", Color.red(topPx) > 200 && Color.blue(topPx) < 50);
+        }
+        topStatic.recycle();
+
+        CropRect bottomCrop = new CropRect(0f, 0.5f, 1f, 1f);
+        Bitmap bottomThumb = WallpaperController.decodeSampledCroppedBitmap(splitImg, bottomCrop, 180, 150);
+        assertNotNull(bottomThumb);
+        assertTrue(bottomThumb.getWidth() > 0 && bottomThumb.getWidth() <= 360);
+        assertTrue(bottomThumb.getHeight() > 0 && bottomThumb.getHeight() <= 300);
+        int bottomPx = bottomThumb.getPixel(bottomThumb.getWidth() / 2, bottomThumb.getHeight() / 2);
+        if (Color.alpha(bottomPx) != 0) {
+            assertTrue("下半区域应为蓝色", Color.blue(bottomPx) > 200 && Color.red(bottomPx) < 50);
+        }
+        bottomThumb.recycle();
     }
 
     private void writeJpeg(File file, int width, int height, int color) throws IOException {

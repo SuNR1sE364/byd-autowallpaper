@@ -78,10 +78,11 @@ public final class WallpaperRepository {
         public final long durationMs;
         public final float fps;
         public final int rotation;
+        public final CropRect cropRect;
 
         public WallpaperItem(String id, String displayName, int width, int height, long sizeBytes, long addedAt) {
             this(id, displayName, width, height, sizeBytes, addedAt,
-                    MEDIA_TYPE_IMAGE, id + ".jpg", 0L, 0f, 0);
+                    MEDIA_TYPE_IMAGE, id + ".jpg", 0L, 0f, 0, null);
         }
 
         public WallpaperItem(String id,
@@ -95,6 +96,22 @@ public final class WallpaperRepository {
                              long durationMs,
                              float fps,
                              int rotation) {
+            this(id, displayName, width, height, sizeBytes, addedAt,
+                    mediaType, fileName, durationMs, fps, rotation, null);
+        }
+
+        public WallpaperItem(String id,
+                             String displayName,
+                             int width,
+                             int height,
+                             long sizeBytes,
+                             long addedAt,
+                             String mediaType,
+                             String fileName,
+                             long durationMs,
+                             float fps,
+                             int rotation,
+                             CropRect cropRect) {
             this.id = id;
             this.displayName = displayName;
             this.width = width;
@@ -106,10 +123,21 @@ public final class WallpaperRepository {
             this.durationMs = Math.max(0L, durationMs);
             this.fps = (Float.isNaN(fps) || Float.isInfinite(fps) || fps < 0f) ? 0f : fps;
             this.rotation = rotation;
+            this.cropRect = isVideo() ? null : cropRect;
         }
 
         public boolean isVideo() {
             return MEDIA_TYPE_VIDEO.equals(mediaType);
+        }
+
+        public boolean hasCustomCrop() {
+            return !isVideo() && cropRect != null;
+        }
+
+        public WallpaperItem withCropRect(CropRect newCropRect) {
+            return new WallpaperItem(
+                    id, displayName, width, height, sizeBytes, addedAt,
+                    mediaType, fileName, durationMs, fps, rotation, newCropRect);
         }
     }
 
@@ -464,6 +492,36 @@ public final class WallpaperRepository {
         writeLibraryLocked(appCtx, data);
         AppLogger.i(TAG, "已删除" + (isDark ? "夜间" : "日间") + "壁纸: id=" + itemId);
         return true;
+    }
+
+    /**
+     * 更新指定静态图片壁纸的归一化裁剪区域；传入 null 表示恢复默认居中裁剪。
+     */
+    public static synchronized WallpaperItem updateWallpaperCrop(
+            Context context, boolean isDark, String itemId, CropRect cropRect) throws IOException {
+        if (itemId == null || itemId.trim().isEmpty()) {
+            throw new IOException("更新壁纸取景失败：壁纸 ID 为空");
+        }
+        Context appCtx = context.getApplicationContext();
+        LibraryData data = readLibraryLocked(appCtx);
+        List<WallpaperItem> targetList = isDark ? data.nightItems : data.dayItems;
+
+        String trimmedId = itemId.trim();
+        for (int i = 0; i < targetList.size(); i++) {
+            WallpaperItem current = targetList.get(i);
+            if (trimmedId.equals(current.id)) {
+                if (current.isVideo()) {
+                    throw new IOException("视频壁纸不支持调整静态取景区域: " + current.displayName);
+                }
+                WallpaperItem updated = current.withCropRect(cropRect);
+                targetList.set(i, updated);
+                writeLibraryLocked(appCtx, data);
+                AppLogger.i(TAG, "已更新" + (isDark ? "夜间" : "日间") + "壁纸取景: id=" + trimmedId
+                        + ", cropRect=" + (cropRect != null ? cropRect.toShortString() : "default"));
+                return updated;
+            }
+        }
+        throw new IOException("未找到对应壁纸条目: id=" + trimmedId);
     }
 
     public static synchronized WallpaperItem getActiveItem(Context context, boolean isDark) {
@@ -1271,7 +1329,8 @@ public final class WallpaperRepository {
                     obj.optString("fileName", id + ".jpg"),
                     obj.optLong("durationMs", 0L),
                     (float) obj.optDouble("fps", 0.0),
-                    obj.optInt("rotation", 0)));
+                    obj.optInt("rotation", 0),
+                    CropRect.fromJsonObject(obj.optJSONObject("cropRect"))));
         }
     }
 
@@ -1316,6 +1375,9 @@ public final class WallpaperRepository {
             double safeFps = (Float.isNaN(item.fps) || Float.isInfinite(item.fps)) ? 0.0 : item.fps;
             obj.put("fps", safeFps);
             obj.put("rotation", item.rotation);
+            if (item.hasCustomCrop()) {
+                obj.put("cropRect", item.cropRect.toJsonObject());
+            }
             arr.put(obj);
         }
         return arr;

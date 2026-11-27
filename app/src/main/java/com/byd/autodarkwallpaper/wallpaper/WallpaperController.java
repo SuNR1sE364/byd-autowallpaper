@@ -7,14 +7,21 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.BitmapRegionDecoder;
+import android.graphics.Rect;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.DisplayMetrics;
+import android.view.WindowManager;
+import android.view.WindowMetrics;
 
 import com.sunr1se.byd.autowallpaper.config.AppPrefs;
 import com.sunr1se.byd.autowallpaper.service.AutoDarkWallpaperService;
 import com.sunr1se.byd.autowallpaper.util.AppLogger;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -183,26 +190,19 @@ public final class WallpaperController {
         }
 
         final File targetFile = WallpaperRepository.getWallpaperFile(appCtx, isDark, item);
+        final CropRect cropRect = item.cropRect;
         STATIC_EXECUTOR.execute(() -> {
             long start = System.currentTimeMillis();
             Bitmap bitmap = null;
             try {
-                if (targetFile == null || !targetFile.exists() || targetFile.length() == 0L) {
-                    throw new IOException("壁纸文件不存在或为空: "
-                            + (targetFile != null ? targetFile.getAbsolutePath() : "null"));
-                }
-                BitmapFactory.Options opts = new BitmapFactory.Options();
-                opts.inPreferredConfig = Bitmap.Config.ARGB_8888;
-                bitmap = BitmapFactory.decodeFile(targetFile.getAbsolutePath(), opts);
-                if (bitmap == null) {
-                    throw new IOException("BitmapFactory.decodeFile 返回 null: " + targetFile.getAbsolutePath());
-                }
+                bitmap = decodeStaticWallpaperBitmap(targetFile, cropRect);
                 WallpaperManager wm = WallpaperManager.getInstance(appCtx);
                 int resultId = wm.setBitmap(bitmap, null, true, WallpaperManager.FLAG_SYSTEM);
                 long elapsed = System.currentTimeMillis() - start;
                 AppLogger.i(TAG, "[直接修改壁纸] WallpaperManager.setBitmap 完成: resultId="
                         + resultId + ", 耗时=" + elapsed + "ms, 分辨率="
-                        + bitmap.getWidth() + "x" + bitmap.getHeight());
+                        + bitmap.getWidth() + "x" + bitmap.getHeight()
+                        + ", 裁剪=" + (cropRect != null ? cropRect.toShortString() : "默认居中"));
                 if (resultId <= 0) {
                     String warnMsg = "WallpaperManager.setBitmap 返回异常 ID=" + resultId + "（可能被车机桌面拦截）";
                     AppLogger.w(TAG, warnMsg);
@@ -219,6 +219,136 @@ public final class WallpaperController {
                 }
             }
         });
+    }
+
+    /**
+     * 读取当前设备物理屏幕宽高比（横屏车机通常为 16:9 或 16:10），失败时回退 16:9。
+     */
+    public static float resolveScreenAspectRatio(Context context) {
+        if (context == null) {
+            return 16f / 9f;
+        }
+        try {
+            WindowManager wm = (WindowManager) context.getApplicationContext().getSystemService(Context.WINDOW_SERVICE);
+            if (wm != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    WindowMetrics metrics = wm.getMaximumWindowMetrics();
+                    if (metrics != null) {
+                        Rect bounds = metrics.getBounds();
+                        if (bounds.width() > 0 && bounds.height() > 0) {
+                            return (float) bounds.width() / (float) bounds.height();
+                        }
+                    }
+                } else {
+                    DisplayMetrics dm = readRealMetricsLegacy(wm);
+                    if (dm.widthPixels > 0 && dm.heightPixels > 0) {
+                        return (float) dm.widthPixels / (float) dm.heightPixels;
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            AppLogger.w(TAG, "读取 WindowManager 屏幕比例失败，回退 DisplayMetrics: " + t.getMessage());
+        }
+        try {
+            DisplayMetrics dm = context.getResources().getDisplayMetrics();
+            if (dm != null && dm.widthPixels > 0 && dm.heightPixels > 0) {
+                return (float) dm.widthPixels / (float) dm.heightPixels;
+            }
+        } catch (Throwable t) {
+            AppLogger.w(TAG, "读取资源 DisplayMetrics 失败，使用默认 16:9: " + t.getMessage());
+        }
+        return 16f / 9f;
+    }
+
+    @SuppressWarnings("deprecation")
+    private static DisplayMetrics readRealMetricsLegacy(WindowManager wm) {
+        DisplayMetrics dm = new DisplayMetrics();
+        wm.getDefaultDisplay().getRealMetrics(dm);
+        return dm;
+    }
+
+    static Bitmap decodeStaticWallpaperBitmap(File file, CropRect cropRect) throws IOException {
+        if (file == null || !file.exists() || file.length() == 0L) {
+            throw new IOException("壁纸文件不存在或为空: "
+                    + (file != null ? file.getAbsolutePath() : "null"));
+        }
+        if (cropRect == null) {
+            BitmapFactory.Options opts = new BitmapFactory.Options();
+            opts.inPreferredConfig = Bitmap.Config.ARGB_8888;
+            Bitmap bitmap = BitmapFactory.decodeFile(file.getAbsolutePath(), opts);
+            if (bitmap == null) {
+                throw new IOException("BitmapFactory.decodeFile 返回 null: " + file.getAbsolutePath());
+            }
+            return bitmap;
+        }
+
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(file.getAbsolutePath(), bounds);
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            throw new IOException("无法解析壁纸尺寸: " + file.getAbsolutePath());
+        }
+
+        Rect region = cropRect.toPixelRect(bounds.outWidth, bounds.outHeight);
+        BitmapRegionDecoder decoder = null;
+        try {
+            decoder = openRegionDecoder(file);
+            if (decoder == null) {
+                throw new IOException("BitmapRegionDecoder.newInstance 返回 null: " + file.getAbsolutePath());
+            }
+            BitmapFactory.Options decodeOpts = new BitmapFactory.Options();
+            decodeOpts.inPreferredConfig = Bitmap.Config.ARGB_8888;
+            Bitmap cropped = decoder.decodeRegion(region, decodeOpts);
+            if (cropped == null) {
+                throw new IOException("BitmapRegionDecoder.decodeRegion 返回 null: " + file.getAbsolutePath());
+            }
+            return cropped;
+        } finally {
+            if (decoder != null) {
+                decoder.recycle();
+            }
+        }
+    }
+
+    public static Bitmap decodeSampledCroppedBitmap(File file, CropRect cropRect, int reqWidth, int reqHeight) {
+        if (cropRect == null) {
+            return decodeSampledBitmap(file, reqWidth, reqHeight);
+        }
+        if (file == null || !file.exists()) {
+            return null;
+        }
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(file.getAbsolutePath(), bounds);
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            return null;
+        }
+        Rect region = cropRect.toPixelRect(bounds.outWidth, bounds.outHeight);
+        BitmapRegionDecoder decoder = null;
+        try {
+            decoder = openRegionDecoder(file);
+            if (decoder == null) {
+                throw new IOException("BitmapRegionDecoder.newInstance 返回 null: " + file.getAbsolutePath());
+            }
+            BitmapFactory.Options opts = new BitmapFactory.Options();
+            opts.inSampleSize = calculateInSampleSize(region.width(), region.height(), reqWidth, reqHeight);
+            opts.inPreferredConfig = Bitmap.Config.ARGB_8888;
+            return decoder.decodeRegion(region, opts);
+        } catch (Throwable t) {
+            AppLogger.e(TAG, "区域采样解码缩略图失败: " + file.getAbsolutePath(), t);
+            return null;
+        } finally {
+            if (decoder != null) {
+                decoder.recycle();
+            }
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private static BitmapRegionDecoder openRegionDecoder(File file) throws IOException {
+        try (FileInputStream fis = new FileInputStream(file)) {
+            return BitmapRegionDecoder.newInstance(fis, false);
+        }
     }
 
     public static Bitmap decodeSampledBitmap(File file, int reqWidth, int reqHeight) {

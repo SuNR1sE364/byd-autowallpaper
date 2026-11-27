@@ -51,7 +51,7 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- 左下：视频时长 SVG 播放图标徽章 -->
+        <!-- 左下：视频时长 或 已剪裁 徽章 -->
         <LinearLayout
             android:id="@+id/layoutItemMediaTag"
             android:layout_width="wrap_content"
@@ -65,9 +65,10 @@
             android:visibility="gone">
 
             <ImageView
+                android:id="@+id/ivItemMediaTagIcon"
                 android:layout_width="10dp"
                 android:layout_height="10dp"
-                android:contentDescription="视频"
+                android:contentDescription="标签"
                 android:src="@drawable/ic_play"
                 android:tint="#FFFFFF" />
 
@@ -111,19 +112,38 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- 右上：删除图标按钮 -->
-        <ImageButton
-            android:id="@+id/btnItemDelete"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
+        <!-- 右上：调整取景按钮（静态图片） + 删除图标按钮 -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:layout_gravity="top|end"
             android:layout_margin="8dp"
-            android:background="@drawable/bg_btn_circle_delete"
-            android:contentDescription="删除壁纸"
-            android:padding="7dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_trash"
-            android:tint="#FFFFFF" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageButton
+                android:id="@+id/btnItemCrop"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/bg_btn_circle_delete"
+                android:contentDescription="调整壁纸取景"
+                android:padding="7dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_crop"
+                android:tint="#FFFFFF" />
+
+            <ImageButton
+                android:id="@+id/btnItemDelete"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:background="@drawable/bg_btn_circle_delete"
+                android:contentDescription="删除壁纸"
+                android:padding="7dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_trash"
+                android:tint="#FFFFFF" />
+        </LinearLayout>
     </FrameLayout>
 
     <TextView

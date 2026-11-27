@@ -36,10 +36,12 @@ import androidx.media3.exoplayer.ExoPlayer;
 import com.sunr1se.byd.autowallpaper.config.AppPrefs;
 import com.sunr1se.byd.autowallpaper.monitor.VehicleStateMonitor;
 import com.sunr1se.byd.autowallpaper.util.AppLogger;
+import com.sunr1se.byd.autowallpaper.wallpaper.CropRect;
 import com.sunr1se.byd.autowallpaper.wallpaper.WallpaperController;
 import com.sunr1se.byd.autowallpaper.wallpaper.WallpaperRepository;
 
 import java.io.File;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ExecutorService;
@@ -93,6 +95,7 @@ public class AutoDarkWallpaperService extends WallpaperService {
         boolean isVideo;
         File videoFile;
         Bitmap bitmap;
+        CropRect cropRect;
         int videoWidth;
         int videoHeight;
 
@@ -101,6 +104,7 @@ public class AutoDarkWallpaperService extends WallpaperService {
             isVideo = false;
             videoFile = null;
             bitmap = null;
+            cropRect = null;
             videoWidth = 0;
             videoHeight = 0;
         }
@@ -122,6 +126,8 @@ public class AutoDarkWallpaperService extends WallpaperService {
 
         private Bitmap activeLayerBitmap;
         private Bitmap retainedFromBitmap;
+        private CropRect currentSceneCropRect = null;
+        private CropRect retainedFromCropRect = null;
         private boolean currentSceneIsVideo = false;
         private File currentSceneVideoFile = null;
         private String currentSceneItemId = null;
@@ -369,6 +375,7 @@ public class AutoDarkWallpaperService extends WallpaperService {
                     boolean sameItemAlreadyLoaded = resolved != null
                             && resolved.id.equals(existingSide.itemId)
                             && existingSide.isVideo == resolved.isVideo()
+                            && Objects.equals(existingSide.cropRect, resolved.cropRect)
                             && existingSide.bitmap != null
                             && !existingSide.bitmap.isRecycled()
                             && (!resolved.isVideo() || (existingSide.videoFile != null && existingSide.videoFile.exists()));
@@ -449,12 +456,12 @@ public class AutoDarkWallpaperService extends WallpaperService {
                                                      int reqW,
                                                      int reqH) {
             if (item == null) {
-                return new LoadedSidePayload(null, false, null, createHintBitmap(isDark, reqW, reqH), 0, 0);
+                return new LoadedSidePayload(null, false, null, createHintBitmap(isDark, reqW, reqH), null, 0, 0);
             }
             File mainFile = WallpaperRepository.getWallpaperFile(AutoDarkWallpaperService.this, isDark, item);
             if (mainFile == null || !mainFile.exists() || mainFile.length() == 0L) {
                 AppLogger.w(TAG, "壁纸文件缺失，使用占位提示画面: id=" + item.id);
-                return new LoadedSidePayload(null, false, null, createHintBitmap(isDark, reqW, reqH), 0, 0);
+                return new LoadedSidePayload(null, false, null, createHintBitmap(isDark, reqW, reqH), null, 0, 0);
             }
             if (item.isVideo()) {
                 File thumbFile = WallpaperRepository.getThumbnailFile(AutoDarkWallpaperService.this, isDark, item);
@@ -464,14 +471,21 @@ public class AutoDarkWallpaperService extends WallpaperService {
                     thumb = extractFirstVideoFrameFallback(mainFile);
                 }
                 return new LoadedSidePayload(
-                        item.id, true, mainFile, thumb, item.width, item.height);
+                        item.id, true, mainFile, thumb, null, item.width, item.height);
             }
-            Bitmap bmp = WallpaperController.decodeSampledBitmap(mainFile, reqW, reqH);
+            int sampleReqW = reqW;
+            int sampleReqH = reqH;
+            if (item.cropRect != null) {
+                sampleReqW = Math.min(3840, Math.max(reqW, Math.round(reqW / Math.max(CropRect.MIN_SPAN, item.cropRect.width()))));
+                sampleReqH = Math.min(3840, Math.max(reqH, Math.round(reqH / Math.max(CropRect.MIN_SPAN, item.cropRect.height()))));
+            }
+            Bitmap bmp = WallpaperController.decodeSampledBitmap(mainFile, sampleReqW, sampleReqH);
             if (bmp == null) {
                 AppLogger.w(TAG, "图片解码失败，使用占位提示画面: " + mainFile.getAbsolutePath());
                 bmp = createHintBitmap(isDark, reqW, reqH);
+                return new LoadedSidePayload(item.id, false, null, bmp, null, 0, 0);
             }
-            return new LoadedSidePayload(item.id, false, null, bmp, 0, 0);
+            return new LoadedSidePayload(item.id, false, null, bmp, item.cropRect, 0, 0);
         }
 
         private Bitmap extractFirstVideoFrameFallback(File videoFile) {
@@ -511,6 +525,7 @@ public class AutoDarkWallpaperService extends WallpaperService {
             targetSide.isVideo = payload.isVideo;
             targetSide.videoFile = payload.videoFile;
             targetSide.bitmap = payload.bitmap;
+            targetSide.cropRect = payload.cropRect;
             targetSide.videoWidth = payload.videoWidth;
             targetSide.videoHeight = payload.videoHeight;
             safeRecycleIfUnused(oldBmp);
@@ -527,11 +542,12 @@ public class AutoDarkWallpaperService extends WallpaperService {
                 Bitmap oldActive = activeLayerBitmap;
                 activeLayerBitmap = target.bitmap;
                 currentSceneItemId = target.itemId;
+                currentSceneCropRect = null;
                 safeRecycleIfUnused(oldActive);
 
                 glRenderer.updateScene(
-                        WallpaperGlRenderer.LayerKind.NONE, null,
-                        WallpaperGlRenderer.LayerKind.VIDEO, null,
+                        WallpaperGlRenderer.LayerKind.NONE, null, null,
+                        WallpaperGlRenderer.LayerKind.VIDEO, null, null,
                         target.bitmap, 1f, isDark);
                 if (visible && videoSurface != null) {
                     if (exoPlayer == null) {
@@ -543,13 +559,14 @@ public class AutoDarkWallpaperService extends WallpaperService {
                 return;
             }
 
-            // 若目标与当前是同一张未变化的静态图，直接更新渲染即可
+            // 若目标与当前是同一张未变化且裁剪未变的静态图，直接更新渲染即可
             if (!target.isVideo && !currentSceneIsVideo
                     && target.itemId != null && target.itemId.equals(currentSceneItemId)
+                    && Objects.equals(target.cropRect, currentSceneCropRect)
                     && target.bitmap == activeLayerBitmap && activeLayerBitmap != null) {
                 glRenderer.updateScene(
-                        WallpaperGlRenderer.LayerKind.NONE, null,
-                        WallpaperGlRenderer.LayerKind.BITMAP, activeLayerBitmap,
+                        WallpaperGlRenderer.LayerKind.NONE, null, null,
+                        WallpaperGlRenderer.LayerKind.BITMAP, activeLayerBitmap, currentSceneCropRect,
                         null, 1f, isDark);
                 return;
             }
@@ -559,15 +576,18 @@ public class AutoDarkWallpaperService extends WallpaperService {
 
             final boolean wasVideo = currentSceneIsVideo;
             final Bitmap previousBitmap = activeLayerBitmap;
+            final CropRect previousCropRect = currentSceneCropRect;
 
             if (!target.isVideo) {
                 // 目标为静态图片（或空状态提示图）
                 final Bitmap targetBmp = target.bitmap;
+                final CropRect targetCrop = target.cropRect;
                 if (wasVideo && doAnimate && exoPlayer != null) {
                     // 视频 -> 图：先暂停旧播放器保留 OES 最后一帧，400ms 过渡结束后再释放播放器
                     exoPlayer.pause();
                     Bitmap oldFrom = retainedFromBitmap;
                     retainedFromBitmap = null;
+                    retainedFromCropRect = null;
                     safeRecycleIfUnused(oldFrom);
 
                     Bitmap oldActive = activeLayerBitmap;
@@ -575,15 +595,16 @@ public class AutoDarkWallpaperService extends WallpaperService {
                     currentSceneIsVideo = false;
                     currentSceneVideoFile = null;
                     currentSceneItemId = target.itemId;
+                    currentSceneCropRect = targetCrop;
                     safeRecycleIfUnused(oldActive);
 
                     glRenderer.updateScene(
-                            WallpaperGlRenderer.LayerKind.VIDEO, null,
-                            WallpaperGlRenderer.LayerKind.BITMAP, targetBmp,
+                            WallpaperGlRenderer.LayerKind.VIDEO, null, null,
+                            WallpaperGlRenderer.LayerKind.BITMAP, targetBmp, targetCrop,
                             previousBitmap, 0f, isDark);
 
                     startBlendAnimation(
-                            WallpaperGlRenderer.LayerKind.BITMAP, targetBmp, null,
+                            WallpaperGlRenderer.LayerKind.BITMAP, targetBmp, targetCrop, null,
                             isDark, true);
                 } else {
                     releaseExoPlayer();
@@ -592,12 +613,14 @@ public class AutoDarkWallpaperService extends WallpaperService {
                     boolean crossfadeImages = doAnimate && previousBitmap != null && !previousBitmap.isRecycled();
                     Bitmap oldFrom = retainedFromBitmap;
                     retainedFromBitmap = crossfadeImages ? previousBitmap : null;
+                    retainedFromCropRect = crossfadeImages ? previousCropRect : null;
                     safeRecycleIfUnused(oldFrom);
 
                     activeLayerBitmap = targetBmp;
                     currentSceneIsVideo = false;
                     currentSceneVideoFile = null;
                     currentSceneItemId = target.itemId;
+                    currentSceneCropRect = targetCrop;
                     if (!crossfadeImages) {
                         safeRecycleIfUnused(previousBitmap);
                     }
@@ -605,15 +628,17 @@ public class AutoDarkWallpaperService extends WallpaperService {
                     glRenderer.updateScene(
                             crossfadeImages ? WallpaperGlRenderer.LayerKind.BITMAP : WallpaperGlRenderer.LayerKind.NONE,
                             crossfadeImages ? previousBitmap : null,
+                            crossfadeImages ? retainedFromCropRect : null,
                             WallpaperGlRenderer.LayerKind.BITMAP,
                             targetBmp,
+                            targetCrop,
                             null,
                             crossfadeImages ? 0f : 1f,
                             isDark);
 
                     if (crossfadeImages) {
                         startBlendAnimation(
-                                WallpaperGlRenderer.LayerKind.BITMAP, targetBmp, null,
+                                WallpaperGlRenderer.LayerKind.BITMAP, targetBmp, targetCrop, null,
                                 isDark, false);
                     }
                 }
@@ -630,12 +655,14 @@ public class AutoDarkWallpaperService extends WallpaperService {
             boolean crossfadeFromPrev = doAnimate && previousBitmap != null && !previousBitmap.isRecycled();
             Bitmap oldFrom = retainedFromBitmap;
             retainedFromBitmap = crossfadeFromPrev ? previousBitmap : null;
+            retainedFromCropRect = crossfadeFromPrev ? previousCropRect : null;
             safeRecycleIfUnused(oldFrom);
 
             activeLayerBitmap = target.bitmap;
             currentSceneIsVideo = true;
             currentSceneVideoFile = target.videoFile;
             currentSceneItemId = target.itemId;
+            currentSceneCropRect = null;
             if (!crossfadeFromPrev) {
                 safeRecycleIfUnused(previousBitmap);
             }
@@ -643,7 +670,9 @@ public class AutoDarkWallpaperService extends WallpaperService {
             glRenderer.updateScene(
                     crossfadeFromPrev ? WallpaperGlRenderer.LayerKind.BITMAP : WallpaperGlRenderer.LayerKind.NONE,
                     crossfadeFromPrev ? previousBitmap : null,
+                    crossfadeFromPrev ? retainedFromCropRect : null,
                     WallpaperGlRenderer.LayerKind.VIDEO,
+                    null,
                     null,
                     target.bitmap,
                     crossfadeFromPrev ? 0f : 1f,
@@ -656,13 +685,14 @@ public class AutoDarkWallpaperService extends WallpaperService {
 
             if (crossfadeFromPrev) {
                 startBlendAnimation(
-                        WallpaperGlRenderer.LayerKind.VIDEO, null, target.bitmap,
+                        WallpaperGlRenderer.LayerKind.VIDEO, null, null, target.bitmap,
                         isDark, false);
             }
         }
 
         private void startBlendAnimation(final WallpaperGlRenderer.LayerKind finalToKind,
                                          final Bitmap finalToBitmap,
+                                         final CropRect finalToCropRect,
                                          final Bitmap finalVideoThumb,
                                          final boolean darkBg,
                                          final boolean releasePlayerOnEnd) {
@@ -692,11 +722,12 @@ public class AutoDarkWallpaperService extends WallpaperService {
                         glRenderer.setVideoFirstFrameRendered(false);
                     }
                     glRenderer.updateScene(
-                            WallpaperGlRenderer.LayerKind.NONE, null,
-                            finalToKind, finalToBitmap,
+                            WallpaperGlRenderer.LayerKind.NONE, null, null,
+                            finalToKind, finalToBitmap, finalToCropRect,
                             finalVideoThumb, 1f, darkBg);
                     Bitmap oldFrom = retainedFromBitmap;
                     retainedFromBitmap = null;
+                    retainedFromCropRect = null;
                     safeRecycleIfUnused(oldFrom);
                 }
             });
@@ -803,6 +834,7 @@ public class AutoDarkWallpaperService extends WallpaperService {
         final boolean isVideo;
         final File videoFile;
         final Bitmap bitmap;
+        final CropRect cropRect;
         final int videoWidth;
         final int videoHeight;
 
@@ -810,12 +842,14 @@ public class AutoDarkWallpaperService extends WallpaperService {
                           boolean isVideo,
                           File videoFile,
                           Bitmap bitmap,
+                          CropRect cropRect,
                           int videoWidth,
                           int videoHeight) {
             this.itemId = itemId;
             this.isVideo = isVideo;
             this.videoFile = videoFile;
             this.bitmap = bitmap;
+            this.cropRect = cropRect;
             this.videoWidth = videoWidth;
             this.videoHeight = videoHeight;
         }

@@ -249,6 +249,44 @@ public class WallpaperRepositoryTest {
         }
     }
 
+    @Test
+    public void updateWallpaperCrop_persistsClearsAndRejectsVideos() throws Exception {
+        Uri imgUri = createTempImageUri("crop_test.jpg", 1080, 1920, Color.RED);
+        WallpaperRepository.ImportResult imgRes =
+                WallpaperRepository.importWallpapersFromUris(context, Collections.singletonList(imgUri), false);
+        String imgId = imgRes.importedItems.get(0).id;
+
+        CropRect crop = new CropRect(0.1f, 0.25f, 0.9f, 0.7f);
+        WallpaperRepository.WallpaperItem updated =
+                WallpaperRepository.updateWallpaperCrop(context, false, imgId, crop);
+        assertTrue(updated.hasCustomCrop());
+        assertNotNull(updated.cropRect);
+        assertTrue(crop.isApproximatelyEqual(updated.cropRect, 1e-5f));
+
+        // 重新从磁盘读取 library.json 验证持久化保留
+        WallpaperRepository.WallpaperItem reloaded = WallpaperRepository.findItemById(context, false, imgId);
+        assertNotNull(reloaded);
+        assertTrue(reloaded.hasCustomCrop());
+        assertTrue(crop.isApproximatelyEqual(reloaded.cropRect, 1e-5f));
+
+        // 传入 null 清除裁剪
+        WallpaperRepository.WallpaperItem cleared =
+                WallpaperRepository.updateWallpaperCrop(context, false, imgId, null);
+        assertFalse(cleared.hasCustomCrop());
+        assertNull(cleared.cropRect);
+        assertFalse(WallpaperRepository.findItemById(context, false, imgId).hasCustomCrop());
+
+        // 视频壁纸不允许设置静态裁剪
+        WallpaperRepository.WallpaperItem video = WallpaperRepository.addVideoItemForTest(
+                context, true, "视频不可裁剪", ".mp4", 1920, 1080, 10_000L, 30f, 0);
+        try {
+            WallpaperRepository.updateWallpaperCrop(context, true, video.id, crop);
+            org.junit.Assert.fail("视频条目更新裁剪区域应抛出 IOException");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage() != null && expected.getMessage().contains("视频壁纸"));
+        }
+    }
+
     private Uri createTempImageUri(String name, int width, int height, int color) throws IOException {
         File file = tempFolder.newFile(name);
         writeJpeg(file, width, height, color);

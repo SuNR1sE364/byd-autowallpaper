@@ -35,6 +35,10 @@ public class WallpaperGridAdapter extends BaseAdapter {
     public interface ItemActionListener {
         void onItemClicked(WallpaperRepository.WallpaperItem item);
 
+        void onItemLongClicked(WallpaperRepository.WallpaperItem item);
+
+        void onCropClicked(WallpaperRepository.WallpaperItem item);
+
         void onDeleteClicked(WallpaperRepository.WallpaperItem item);
     }
 
@@ -124,11 +128,20 @@ public class WallpaperGridAdapter extends BaseAdapter {
                     ? VideoSpecEvaluator.formatDuration(item.durationMs)
                     : "视频";
             holder.layoutMediaTag.setVisibility(View.VISIBLE);
+            holder.ivMediaTagIcon.setImageResource(R.drawable.ic_play);
             holder.tvMediaTag.setText(tagText);
+            holder.btnCrop.setVisibility(View.GONE);
             String fpsPart = item.fps > 0f ? (" · " + VideoSpecEvaluator.formatFps(item.fps)) : "";
             holder.tvMeta.setText(item.width + "×" + item.height + fpsPart + " · " + sizeText);
         } else {
-            holder.layoutMediaTag.setVisibility(View.GONE);
+            holder.btnCrop.setVisibility(View.VISIBLE);
+            if (item.hasCustomCrop()) {
+                holder.layoutMediaTag.setVisibility(View.VISIBLE);
+                holder.ivMediaTagIcon.setImageResource(R.drawable.ic_crop);
+                holder.tvMediaTag.setText("已剪裁");
+            } else {
+                holder.layoutMediaTag.setVisibility(View.GONE);
+            }
             holder.tvMeta.setText(item.width + "×" + item.height + " · " + sizeText);
         }
 
@@ -162,6 +175,18 @@ public class WallpaperGridAdapter extends BaseAdapter {
                 listener.onItemClicked(item);
             }
         });
+        holder.root.setOnLongClickListener(v -> {
+            if (listener != null) {
+                listener.onItemLongClicked(item);
+                return true;
+            }
+            return false;
+        });
+        holder.btnCrop.setOnClickListener(v -> {
+            if (listener != null) {
+                listener.onCropClicked(item);
+            }
+        });
         holder.btnDelete.setOnClickListener(v -> {
             if (listener != null) {
                 listener.onDeleteClicked(item);
@@ -173,7 +198,8 @@ public class WallpaperGridAdapter extends BaseAdapter {
     }
 
     private void bindThumbnail(ImageView imageView, WallpaperRepository.WallpaperItem item) {
-        final String cacheKey = (isDarkModePage ? "night:" : "day:") + item.id;
+        String cropKey = item.hasCustomCrop() ? item.cropRect.toCacheKey() : "default";
+        final String cacheKey = (isDarkModePage ? "night:" : "day:") + item.id + ":" + cropKey;
         imageView.setTag(cacheKey);
 
         Bitmap cached = thumbnailCache.get(cacheKey);
@@ -186,7 +212,8 @@ public class WallpaperGridAdapter extends BaseAdapter {
         final boolean darkFlag = isDarkModePage;
         final File file = WallpaperRepository.getThumbnailFile(context, darkFlag, item);
         decodeExecutor.execute(() -> {
-            Bitmap decoded = WallpaperController.decodeSampledBitmap(file, 480, 300);
+            Bitmap decoded = WallpaperController.decodeSampledCroppedBitmap(
+                    file, item.isVideo() ? null : item.cropRect, 480, 300);
             if (decoded != null) {
                 thumbnailCache.put(cacheKey, decoded);
             }
@@ -205,8 +232,10 @@ public class WallpaperGridAdapter extends BaseAdapter {
         final ImageView ivBadgeIcon;
         final TextView tvBadge;
         final View layoutMediaTag;
+        final ImageView ivMediaTagIcon;
         final TextView tvMediaTag;
         final View layoutDisabledOverlay;
+        final ImageButton btnCrop;
         final ImageButton btnDelete;
         final TextView tvName;
         final TextView tvMeta;
@@ -218,8 +247,10 @@ public class WallpaperGridAdapter extends BaseAdapter {
             this.ivBadgeIcon = view.findViewById(R.id.ivItemBadgeIcon);
             this.tvBadge = view.findViewById(R.id.tvItemBadge);
             this.layoutMediaTag = view.findViewById(R.id.layoutItemMediaTag);
+            this.ivMediaTagIcon = view.findViewById(R.id.ivItemMediaTagIcon);
             this.tvMediaTag = view.findViewById(R.id.tvItemMediaTag);
             this.layoutDisabledOverlay = view.findViewById(R.id.layoutItemDisabledOverlay);
+            this.btnCrop = view.findViewById(R.id.btnItemCrop);
             this.btnDelete = view.findViewById(R.id.btnItemDelete);
             this.tvName = view.findViewById(R.id.tvItemName);
             this.tvMeta = view.findViewById(R.id.tvItemMeta);

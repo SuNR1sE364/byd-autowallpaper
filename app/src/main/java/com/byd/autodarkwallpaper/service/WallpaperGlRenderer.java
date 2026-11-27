@@ -18,6 +18,7 @@ import android.view.Surface;
 import android.view.SurfaceHolder;
 
 import com.sunr1se.byd.autowallpaper.util.AppLogger;
+import com.sunr1se.byd.autowallpaper.wallpaper.CropRect;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -102,6 +103,7 @@ public final class WallpaperGlRenderer {
     private final float[] videoTexMatrix = new float[16];
     private final float[] mvpMatrix = new float[16];
     private final float[] tempScale = new float[2];
+    private final float[] tempTexMatrix = new float[16];
 
     // EGL 与 GL 资源（仅在 glThread 上读写）
     private EGLDisplay eglDisplay = EGL14.EGL_NO_DISPLAY;
@@ -137,6 +139,8 @@ public final class WallpaperGlRenderer {
     // 逻辑场景状态（仅在 glThread 上读写）
     private LayerKind fromKind = LayerKind.NONE;
     private LayerKind toKind = LayerKind.NONE;
+    private CropRect fromCropRect = null;
+    private CropRect toCropRect = null;
     private float blend = 0f;
     private boolean darkBackground = false;
     private int videoWidth = 0;
@@ -210,6 +214,60 @@ public final class WallpaperGlRenderer {
 
         float viewAspect = (float) viewW / (float) viewH;
         float contentAspect = effectiveW / effectiveH;
+        if (contentAspect > viewAspect) {
+            outScale[0] = contentAspect / viewAspect;
+            outScale[1] = 1f;
+        } else {
+            outScale[0] = 1f;
+            outScale[1] = viewAspect / contentAspect;
+        }
+    }
+
+    /**
+     * 计算带归一化裁剪区域的 2D Bitmap 列主序纹理矩阵（纯浮点运算，兼容纯 JVM 单元测试）。
+     * Bitmap 上传到 GL 后，顶部对应 t=0，底部对应 t=1；全屏顶点在底边 q=0、顶边 q=1。
+     */
+    public static void computeBitmapTexMatrix(CropRect cropRect, float[] outTexMatrix) {
+        if (outTexMatrix == null || outTexMatrix.length < 16) {
+            throw new IllegalArgumentException("outTexMatrix length must be >= 16");
+        }
+        for (int i = 0; i < 16; i++) {
+            outTexMatrix[i] = 0f;
+        }
+        CropRect r = cropRect != null ? cropRect : CropRect.FULL;
+        outTexMatrix[0] = r.right - r.left;
+        outTexMatrix[5] = -(r.bottom - r.top);
+        outTexMatrix[10] = 1f;
+        outTexMatrix[12] = r.left;
+        outTexMatrix[13] = r.bottom;
+        outTexMatrix[15] = 1f;
+    }
+
+    /**
+     * 基于裁剪区域的有效子图尺寸计算 CenterCrop 缩放系数（避免裁剪区域本身被非等比拉伸）。
+     */
+    public static void computeCroppedCenterCropScale(int viewW,
+                                                     int viewH,
+                                                     int contentW,
+                                                     int contentH,
+                                                     CropRect cropRect,
+                                                     float[] outScale) {
+        if (outScale == null || outScale.length < 2) {
+            throw new IllegalArgumentException("outScale length must be >= 2");
+        }
+        if (viewW <= 0 || viewH <= 0 || contentW <= 0 || contentH <= 0) {
+            outScale[0] = 1f;
+            outScale[1] = 1f;
+            return;
+        }
+        if (cropRect == null) {
+            computeCenterCropScale(viewW, viewH, contentW, contentH, 1f, 0, outScale);
+            return;
+        }
+        float subW = Math.max(1f, contentW * cropRect.width());
+        float subH = Math.max(1f, contentH * cropRect.height());
+        float viewAspect = (float) viewW / (float) viewH;
+        float contentAspect = subW / subH;
         if (contentAspect > viewAspect) {
             outScale[0] = contentAspect / viewAspect;
             outScale[1] = 1f;
@@ -308,12 +366,26 @@ public final class WallpaperGlRenderer {
                             final Bitmap videoThumbBitmap,
                             final float blend,
                             final boolean darkBackground) {
+        updateScene(fromKind, fromBitmap, null, toKind, toBitmap, null, videoThumbBitmap, blend, darkBackground);
+    }
+
+    public void updateScene(final LayerKind fromKind,
+                            final Bitmap fromBitmap,
+                            final CropRect fromCropRect,
+                            final LayerKind toKind,
+                            final Bitmap toBitmap,
+                            final CropRect toCropRect,
+                            final Bitmap videoThumbBitmap,
+                            final float blend,
+                            final boolean darkBackground) {
         if (released) {
             return;
         }
         postToGl(() -> {
             this.fromKind = fromKind != null ? fromKind : LayerKind.NONE;
             this.toKind = toKind != null ? toKind : LayerKind.NONE;
+            this.fromCropRect = fromCropRect;
+            this.toCropRect = toCropRect;
             this.blend = clamp01(blend);
             this.darkBackground = darkBackground;
 
@@ -638,10 +710,10 @@ public final class WallpaperGlRenderer {
         GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
 
         if (fromKind != LayerKind.NONE && blend < 1f) {
-            drawLayerOnGlThread(fromKind, fromTexId, fromTexW, fromTexH, 1f, viewW, viewH);
+            drawLayerOnGlThread(fromKind, fromTexId, fromTexW, fromTexH, fromCropRect, 1f, viewW, viewH);
         }
         if (toKind != LayerKind.NONE && blend > 0f) {
-            drawLayerOnGlThread(toKind, toTexId, toTexW, toTexH, blend, viewW, viewH);
+            drawLayerOnGlThread(toKind, toTexId, toTexW, toTexH, toCropRect, blend, viewW, viewH);
         }
 
         if (!EGL14.eglSwapBuffers(eglDisplay, eglSurface)) {
@@ -656,6 +728,7 @@ public final class WallpaperGlRenderer {
                                      int bitmapTexId,
                                      int bitmapW,
                                      int bitmapH,
+                                     CropRect cropRect,
                                      float alpha,
                                      int viewW,
                                      int viewH) {
@@ -664,7 +737,7 @@ public final class WallpaperGlRenderer {
         }
         if (kind == LayerKind.BITMAP) {
             if (bitmapTexId != 0 && bitmapW > 0 && bitmapH > 0) {
-                draw2DTexture(bitmapTexId, bitmapW, bitmapH, alpha, viewW, viewH);
+                draw2DTexture(bitmapTexId, bitmapW, bitmapH, cropRect, alpha, viewW, viewH);
             }
             return;
         }
@@ -673,19 +746,32 @@ public final class WallpaperGlRenderer {
                 drawOesTexture(videoTextureId, videoWidth, videoHeight,
                         videoPixelAspectRatio, videoUnappliedRotation, alpha, viewW, viewH);
             } else if (videoThumbTexId != 0 && videoThumbW > 0 && videoThumbH > 0) {
-                draw2DTexture(videoThumbTexId, videoThumbW, videoThumbH, alpha, viewW, viewH);
+                draw2DTexture(videoThumbTexId, videoThumbW, videoThumbH, null, alpha, viewW, viewH);
             }
         }
     }
 
-    private void draw2DTexture(int texId, int contentW, int contentH, float alpha, int viewW, int viewH) {
+    private void draw2DTexture(int texId,
+                               int contentW,
+                               int contentH,
+                               CropRect cropRect,
+                               float alpha,
+                               int viewW,
+                               int viewH) {
         if (program2D == null) {
             return;
         }
-        computeCenterCropScale(viewW, viewH, contentW, contentH, 1f, 0, tempScale);
+        computeCroppedCenterCropScale(viewW, viewH, contentW, contentH, cropRect, tempScale);
         Matrix.setIdentityM(mvpMatrix, 0);
         Matrix.scaleM(mvpMatrix, 0, tempScale[0], tempScale[1], 1f);
-        drawQuad(program2D, GLES20.GL_TEXTURE_2D, texId, mvpMatrix, bitmapTexMatrix, alpha);
+        float[] texMat;
+        if (cropRect != null) {
+            computeBitmapTexMatrix(cropRect, tempTexMatrix);
+            texMat = tempTexMatrix;
+        } else {
+            texMat = bitmapTexMatrix;
+        }
+        drawQuad(program2D, GLES20.GL_TEXTURE_2D, texId, mvpMatrix, texMat, alpha);
     }
 
     private void drawOesTexture(int texId,

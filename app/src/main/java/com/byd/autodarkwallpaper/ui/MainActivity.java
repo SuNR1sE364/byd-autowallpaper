@@ -38,6 +38,7 @@ import android.widget.GridView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -48,6 +49,7 @@ import com.sunr1se.byd.autowallpaper.monitor.VehicleStateMonitor;
 import com.sunr1se.byd.autowallpaper.service.AutoDarkMonitorService;
 import com.sunr1se.byd.autowallpaper.service.AutoDarkWallpaperService;
 import com.sunr1se.byd.autowallpaper.util.AppLogger;
+import com.sunr1se.byd.autowallpaper.wallpaper.CropRect;
 import com.sunr1se.byd.autowallpaper.wallpaper.VideoSpecEvaluator;
 import com.sunr1se.byd.autowallpaper.wallpaper.WallpaperController;
 import com.sunr1se.byd.autowallpaper.wallpaper.WallpaperRepository;
@@ -56,9 +58,11 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 车机原生风格主界面：左侧导航栏（主页 / 壁纸 / 关于）+ 右侧内容区。
@@ -494,6 +498,18 @@ public class MainActivity extends Activity {
             }
 
             @Override
+            public void onItemLongClicked(WallpaperRepository.WallpaperItem item) {
+                handleWallpaperItemLongClicked(item);
+            }
+
+            @Override
+            public void onCropClicked(WallpaperRepository.WallpaperItem item) {
+                if (!item.isVideo()) {
+                    showWallpaperCropDialog(item, editingNight);
+                }
+            }
+
+            @Override
             public void onDeleteClicked(WallpaperRepository.WallpaperItem item) {
                 confirmDeleteWallpaper(item);
             }
@@ -825,12 +841,14 @@ public class MainActivity extends Activity {
                     WallpaperRepository.getActiveItem(MainActivity.this, true, isLiveMode);
 
             final Bitmap dayBmp = dayActive != null
-                    ? WallpaperController.decodeSampledBitmap(
-                    WallpaperRepository.getThumbnailFile(MainActivity.this, false, dayActive), 480, 300)
+                    ? WallpaperController.decodeSampledCroppedBitmap(
+                    WallpaperRepository.getThumbnailFile(MainActivity.this, false, dayActive),
+                    dayActive.isVideo() ? null : dayActive.cropRect, 480, 300)
                     : null;
             final Bitmap nightBmp = nightActive != null
-                    ? WallpaperController.decodeSampledBitmap(
-                    WallpaperRepository.getThumbnailFile(MainActivity.this, true, nightActive), 480, 300)
+                    ? WallpaperController.decodeSampledCroppedBitmap(
+                    WallpaperRepository.getThumbnailFile(MainActivity.this, true, nightActive),
+                    nightActive.isVideo() ? null : nightActive.cropRect, 480, 300)
                     : null;
 
             final int dayMode = prefs.getSelectionMode(false);
@@ -1278,25 +1296,82 @@ public class MainActivity extends Activity {
         showWallpaperPreviewDialog(item);
     }
 
+    private void handleWallpaperItemLongClicked(final WallpaperRepository.WallpaperItem item) {
+        final boolean targetNight = editingNight;
+        final List<String> labels = new ArrayList<>();
+        final List<Runnable> actions = new ArrayList<>();
+
+        boolean isLiveMode = (prefs.getWallpaperMode() == AppPrefs.MODE_LIVE_SERVICE);
+        int selectionMode = prefs.getSelectionMode(targetNight);
+        String currentSelected = prefs.getSelectedWallpaperId(targetNight);
+        if ((isLiveMode || !item.isVideo())
+                && !(selectionMode == AppPrefs.SELECT_FIXED && item.id.equals(currentSelected))) {
+            labels.add(selectionMode == AppPrefs.SELECT_RANDOM
+                    ? "改用指定此壁纸"
+                    : ("设为" + (targetNight ? "夜间" : "日间") + "壁纸"));
+            actions.add(() -> {
+                prefs.setSelectionMode(targetNight, AppPrefs.SELECT_FIXED);
+                prefs.setSelectedWallpaperId(targetNight, item.id);
+                prefs.setActiveWallpaperId(targetNight, item.id);
+                refreshWallpaperPage();
+                refreshHomeWallpaperOverviewAsync();
+                notifyWallpaperAppliedIfNeeded(targetNight);
+                Toast.makeText(this, "已设为" + (targetNight ? "夜间" : "日间") + "壁纸", Toast.LENGTH_SHORT).show();
+            });
+        }
+
+        if (!item.isVideo()) {
+            labels.add("调整取景");
+            actions.add(() -> showWallpaperCropDialog(item, targetNight));
+            if (item.hasCustomCrop()) {
+                labels.add("恢复默认居中");
+                actions.add(() -> resetWallpaperCropToDefault(item, targetNight));
+            }
+        }
+
+        labels.add("查看预览");
+        actions.add(() -> showWallpaperPreviewDialog(item));
+
+        labels.add("删除壁纸");
+        actions.add(() -> confirmDeleteWallpaper(item));
+
+        new AlertDialog.Builder(this)
+                .setTitle(item.displayName)
+                .setItems(labels.toArray(new String[0]), (d, which) -> actions.get(which).run())
+                .show();
+    }
+
     private void showWallpaperPreviewDialog(final WallpaperRepository.WallpaperItem item) {
-        File thumbFile = WallpaperRepository.getThumbnailFile(this, editingNight, item);
-        Bitmap preview = WallpaperController.decodeSampledBitmap(thumbFile, 1280, 800);
+        final boolean targetNight = editingNight;
+        File thumbFile = WallpaperRepository.getThumbnailFile(this, targetNight, item);
+        final Bitmap preview = WallpaperController.decodeSampledBitmap(thumbFile, 1280, 800);
 
         LinearLayout container = new LinearLayout(this);
         container.setOrientation(LinearLayout.VERTICAL);
         int pad = dpToPx(16);
         container.setPadding(pad, pad, pad, pad / 2);
 
-        ImageView iv = new ImageView(this);
-        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        iv.setAdjustViewBounds(true);
-        LinearLayout.LayoutParams ivParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(260));
-        iv.setLayoutParams(ivParams);
-        if (preview != null) {
-            iv.setImageBitmap(preview);
+        if (item.isVideo()) {
+            ImageView iv = new ImageView(this);
+            iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            iv.setAdjustViewBounds(true);
+            iv.setLayoutParams(new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(240)));
+            if (preview != null) {
+                iv.setImageBitmap(preview);
+            }
+            container.addView(iv);
+        } else {
+            WallpaperCropView previewCropView = new WallpaperCropView(this);
+            previewCropView.setInteractive(false);
+            previewCropView.setLayoutParams(new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(240)));
+            float aspect = WallpaperController.resolveScreenAspectRatio(this);
+            if (preview != null) {
+                previewCropView.setImageAndCrop(preview, item.width, item.height, aspect, item.cropRect);
+            }
+            container.addView(previewCropView);
         }
-        container.addView(iv);
 
         TextView tvInfo = new TextView(this);
         tvInfo.setPadding(0, dpToPx(10), 0, 0);
@@ -1316,34 +1391,240 @@ public class MainActivity extends Activity {
             info.append("\n类型：静态图片");
             info.append("\n分辨率：").append(item.width).append(" × ").append(item.height);
             info.append("\n大小：").append(VideoSpecEvaluator.formatSize(item.sizeBytes));
+            info.append("\n取景：").append(item.hasCustomCrop() ? "已自定义剪裁（高亮区为桌面实际显示范围）" : "默认居中裁剪（高亮区为桌面实际显示范围）");
         }
         tvInfo.setText(info.toString());
         tvInfo.setTextSize(13f);
         container.addView(tvInfo);
 
+        final AlertDialog[] dialogHolder = new AlertDialog[1];
+        if (!item.isVideo()) {
+            Button btnEditCrop = new Button(this);
+            btnEditCrop.setAllCaps(false);
+            btnEditCrop.setText("调整桌面取景...");
+            LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            btnParams.topMargin = dpToPx(8);
+            btnEditCrop.setLayoutParams(btnParams);
+            btnEditCrop.setOnClickListener(v -> {
+                if (dialogHolder[0] != null) {
+                    dialogHolder[0].dismiss();
+                }
+                showWallpaperCropDialog(item, targetNight);
+            });
+            container.addView(btnEditCrop);
+        }
+
         AlertDialog.Builder builder = new AlertDialog.Builder(this)
-                .setTitle((editingNight ? "夜间壁纸预览" : "日间壁纸预览"))
+                .setTitle((targetNight ? "夜间壁纸预览" : "日间壁纸预览"))
                 .setView(container)
                 .setPositiveButton("关闭", null)
                 .setNegativeButton("删除此壁纸", (d, w) -> confirmDeleteWallpaper(item));
 
         boolean isLiveMode = (prefs.getWallpaperMode() == AppPrefs.MODE_LIVE_SERVICE);
-        if (prefs.getSelectionMode(editingNight) == AppPrefs.SELECT_RANDOM && (isLiveMode || !item.isVideo())) {
+        if (prefs.getSelectionMode(targetNight) == AppPrefs.SELECT_RANDOM && (isLiveMode || !item.isVideo())) {
             builder.setNeutralButton("改用指定此壁纸", (d, w) -> {
-                prefs.setSelectionMode(editingNight, AppPrefs.SELECT_FIXED);
-                prefs.setSelectedWallpaperId(editingNight, item.id);
-                prefs.setActiveWallpaperId(editingNight, item.id);
+                prefs.setSelectionMode(targetNight, AppPrefs.SELECT_FIXED);
+                prefs.setSelectedWallpaperId(targetNight, item.id);
+                prefs.setActiveWallpaperId(targetNight, item.id);
                 refreshWallpaperPage();
                 refreshHomeWallpaperOverviewAsync();
-                if (prefs.isEnabled() && isSystemNightNow() == editingNight) {
-                    WallpaperController.resetDedupState();
-                    AutoDarkMonitorService.notifyConfigUpdated(this);
-                } else {
-                    WallpaperController.notifyLibraryChanged(this);
-                }
+                notifyWallpaperAppliedIfNeeded(targetNight);
             });
         }
-        builder.show();
+        AlertDialog dialog = builder.create();
+        dialogHolder[0] = dialog;
+        dialog.setOnDismissListener(d -> {
+            if (preview != null && !preview.isRecycled()) {
+                preview.recycle();
+            }
+        });
+        dialog.show();
+    }
+
+    private void showWallpaperCropDialog(final WallpaperRepository.WallpaperItem item, final boolean targetNight) {
+        if (item == null || item.isVideo()) {
+            return;
+        }
+        final Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setContentView(R.layout.dialog_wallpaper_crop);
+        dialog.setCanceledOnTouchOutside(false);
+
+        final WallpaperCropView cropView = dialog.findViewById(R.id.cropPreviewView);
+        final TextView tvLoading = dialog.findViewById(R.id.tvCropLoading);
+        final TextView tvZoomValue = dialog.findViewById(R.id.tvCropZoomValue);
+        final SeekBar seekZoom = dialog.findViewById(R.id.seekCropZoom);
+        final TextView btnReset = dialog.findViewById(R.id.btnCropReset);
+        final TextView btnCancel = dialog.findViewById(R.id.btnCropCancel);
+        final TextView btnSave = dialog.findViewById(R.id.btnCropSave);
+        final View btnClose = dialog.findViewById(R.id.btnCloseCropDialog);
+
+        // 动态限高，保证车机横屏下整个弹窗无需纵向滚动即可完整展示
+        int screenH = getResources().getDisplayMetrics().heightPixels;
+        int screenW = getResources().getDisplayMetrics().widthPixels;
+        int targetViewH = Math.max(dpToPx(180), Math.min(dpToPx(340), Math.round(screenH * 0.54f)));
+        ViewGroup.LayoutParams cropLp = cropView.getLayoutParams();
+        cropLp.height = targetViewH;
+        cropView.setLayoutParams(cropLp);
+
+        final AtomicBoolean dismissed = new AtomicBoolean(false);
+        final AtomicBoolean updatingSlider = new AtomicBoolean(false);
+        final Bitmap[] loadedHolder = new Bitmap[1];
+
+        btnSave.setEnabled(false);
+        btnReset.setEnabled(false);
+        seekZoom.setEnabled(false);
+
+        cropView.setOnCropChangeListener((cropRect, zoom, maxZoom, isDefaultCenter) -> {
+            tvZoomValue.setText(String.format(Locale.US, "%.1f×", zoom));
+            btnReset.setEnabled(!isDefaultCenter);
+            btnReset.setAlpha(isDefaultCenter ? 0.5f : 1.0f);
+            if (!updatingSlider.get()) {
+                updatingSlider.set(true);
+                try {
+                    if (maxZoom <= 1.001f) {
+                        seekZoom.setEnabled(false);
+                        seekZoom.setProgress(0);
+                    } else {
+                        seekZoom.setEnabled(true);
+                        int progress = Math.round(((zoom - 1f) / (maxZoom - 1f)) * seekZoom.getMax());
+                        seekZoom.setProgress(Math.max(0, Math.min(seekZoom.getMax(), progress)));
+                    }
+                } finally {
+                    updatingSlider.set(false);
+                }
+            }
+        });
+
+        seekZoom.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (!fromUser || updatingSlider.get()) {
+                    return;
+                }
+                float maxZoom = cropView.getMaxZoom();
+                if (maxZoom <= 1.001f) {
+                    return;
+                }
+                updatingSlider.set(true);
+                try {
+                    float zoom = 1f + ((float) progress / (float) seekBar.getMax()) * (maxZoom - 1f);
+                    cropView.setZoomFromSlider(zoom);
+                } finally {
+                    updatingSlider.set(false);
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
+        });
+
+        btnClose.setOnClickListener(v -> dialog.dismiss());
+        btnCancel.setOnClickListener(v -> dialog.dismiss());
+        btnReset.setOnClickListener(v -> cropView.resetToDefaultCenter());
+        btnSave.setOnClickListener(v -> {
+            final CropRect toSave = cropView.isAtDefaultCenter() ? null : cropView.getCurrentCropRect();
+            btnSave.setEnabled(false);
+            ioExecutor.execute(() -> {
+                try {
+                    WallpaperRepository.updateWallpaperCrop(MainActivity.this, targetNight, item.id, toSave);
+                    runOnUiThread(() -> {
+                        if (!dismissed.get()) {
+                            dialog.dismiss();
+                        }
+                        onWallpaperCropSaved(targetNight);
+                        Toast.makeText(MainActivity.this,
+                                toSave == null ? "已恢复默认居中取景" : "已保存取景裁剪区域",
+                                Toast.LENGTH_SHORT).show();
+                    });
+                } catch (Throwable t) {
+                    AppLogger.e(TAG, "保存壁纸取景失败: id=" + item.id, t);
+                    runOnUiThread(() -> {
+                        if (!dismissed.get()) {
+                            btnSave.setEnabled(true);
+                        }
+                        Toast.makeText(MainActivity.this,
+                                "保存失败: " + t.getMessage(), Toast.LENGTH_LONG).show();
+                    });
+                }
+            });
+        });
+
+        dialog.setOnDismissListener(d -> {
+            dismissed.set(true);
+            if (loadedHolder[0] != null && !loadedHolder[0].isRecycled()) {
+                loadedHolder[0].recycle();
+                loadedHolder[0] = null;
+            }
+        });
+
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            int maxDialogWidth = dpToPx(760);
+            int targetWidth = Math.min((int) (screenW * 0.88f), maxDialogWidth);
+            window.setLayout(targetWidth, ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+        dialog.show();
+
+        final float screenAspect = WallpaperController.resolveScreenAspectRatio(this);
+        ioExecutor.execute(() -> {
+            File file = WallpaperRepository.getWallpaperFile(MainActivity.this, targetNight, item);
+            Bitmap bmp = WallpaperController.decodeSampledBitmap(file, 2048, 2048);
+            runOnUiThread(() -> {
+                if (dismissed.get() || isFinishing() || isDestroyed()) {
+                    if (bmp != null && !bmp.isRecycled()) {
+                        bmp.recycle();
+                    }
+                    return;
+                }
+                if (bmp == null) {
+                    tvLoading.setText("读取图片失败，无法调整取景");
+                    return;
+                }
+                loadedHolder[0] = bmp;
+                tvLoading.setVisibility(View.GONE);
+                btnSave.setEnabled(true);
+                cropView.setImageAndCrop(bmp, item.width, item.height, screenAspect, item.cropRect);
+            });
+        });
+    }
+
+    private void resetWallpaperCropToDefault(final WallpaperRepository.WallpaperItem item, final boolean targetNight) {
+        ioExecutor.execute(() -> {
+            try {
+                WallpaperRepository.updateWallpaperCrop(MainActivity.this, targetNight, item.id, null);
+                runOnUiThread(() -> {
+                    onWallpaperCropSaved(targetNight);
+                    Toast.makeText(MainActivity.this, "已恢复默认居中取景", Toast.LENGTH_SHORT).show();
+                });
+            } catch (Throwable t) {
+                AppLogger.e(TAG, "恢复默认取景失败: id=" + item.id, t);
+                runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                        "恢复失败: " + t.getMessage(), Toast.LENGTH_LONG).show());
+            }
+        });
+    }
+
+    private void onWallpaperCropSaved(boolean targetNight) {
+        refreshWallpaperPage();
+        refreshHomeWallpaperOverviewAsync();
+        notifyWallpaperAppliedIfNeeded(targetNight);
+    }
+
+    private void notifyWallpaperAppliedIfNeeded(boolean targetNight) {
+        if (prefs.isEnabled() && isSystemNightNow() == targetNight) {
+            WallpaperController.resetDedupState();
+            AutoDarkMonitorService.notifyConfigUpdated(this);
+        } else {
+            WallpaperController.notifyLibraryChanged(this);
+        }
     }
 
     private void confirmDeleteWallpaper(final WallpaperRepository.WallpaperItem item) {

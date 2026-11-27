@@ -31,18 +31,19 @@
 
 ### 3.1 两种壁纸切换模式（`AppPrefs.KEY_WALLPAPER_MODE`）
 1. **直接修改壁纸（`MODE_STATIC_MANAGER = 0`，默认）**：
-   - 通过 `WallpaperManager.setBitmap(bitmap, null, true, WallpaperManager.FLAG_SYSTEM)` 替换系统桌面静态壁纸（仅支持图片，拦截视频）。
+   - 通过 `WallpaperManager.setBitmap(bitmap, null, true, WallpaperManager.FLAG_SYSTEM)` 替换系统桌面静态壁纸（仅支持图片，拦截视频）。若图片配置了 `CropRect`，先用 `BitmapRegionDecoder` 解码选定区域再写入，确保与屏幕比例一致。
    - 开启总开关或从动态模式切回静态模式前，通过 `WallpaperRepository.backupCurrentSystemWallpaper` 备份原系统壁纸（`original_backup.img` + 元数据）；关闭总开关或切往动态模式时，通过 `restoreOriginalWallpaper` 自动复原。
    - 若因缺少存储读取权限或系统当前为动态壁纸/车机百变主题导致无法读取，弹窗引导授权（Android 11+ 跳转 `MANAGE_APP_ALL_FILES_ACCESS_PERMISSION`）或允许用户选择「不备份继续」。
 2. **动态壁纸模式（`MODE_LIVE_SERVICE = 1`）**：
    - 由 `AutoDarkWallpaperService`（`WallpaperService`）与 `WallpaperGlRenderer`（OpenGL ES 2.0 统一渲染管线，独立 `HandlerThread` 维护 EGL 上下文）驱动。
-   - 统一渲染静态图片（`GL_TEXTURE_2D`）与 `Media3 ExoPlayer` 视频帧（`GL_TEXTURE_EXTERNAL_OES`），支持 `400ms`（`TRANSITION_DURATION_MS`）双层平滑淡入淡出过渡与横竖屏自适应 CenterCrop 裁剪。
+   - 统一渲染静态图片（`GL_TEXTURE_2D`，支持按 `CropRect` 映射 2D 纹理矩阵及子图缩放）与 `Media3 ExoPlayer` 视频帧（`GL_TEXTURE_EXTERNAL_OES`），支持 `400ms`（`TRANSITION_DURATION_MS`）双层平滑淡入淡出过渡与横竖屏自适应 CenterCrop 裁剪。
    - 播放控制：完全禁用音轨以免干扰车机音乐与导航播报；壁纸隐藏超过 `30s`（`IDLE_PLAYER_RELEASE_DELAY_MS = 30_000L`）自动释放 `ExoPlayer` 归还硬件解码资源；播放异常时延迟 `1500ms` 重建重试（最多 `MAX_VIDEO_RETRY = 3` 次）。
    - 需用户在系统壁纸选择器中将 `AutoDarkWallpaperService` 设为系统动态壁纸（`WallpaperController.isOurLiveWallpaperActive` 检测激活状态）。
 
-### 3.2 多壁纸库、视频预检与选取策略
+### 3.2 多壁纸库、视频预检、无损取景与选取策略
 - **壁纸库管理（`WallpaperRepository`）**：
   - 独立维护日间与夜间目录及 `library.json` 元数据，支持多选图片/视频导入；图片导入时自动处理 EXIF 旋转（最大边限制 `MAX_IMPORT_EDGE = 3840`），视频流式复制原文件并抽取首帧缩略图（最大边 `MAX_VIDEO_THUMB_EDGE = 960`）。
+  - **静态图片无损取景（`CropRect` + `WallpaperCropMath` + `WallpaperCropView`）**：原图保留在磁盘上不被破坏性裁切；用户在壁纸页点击裁剪图标、长按菜单或预览弹窗中调整取景框（比例锁定当前设备屏幕宽高比，支持拖动与双指/滑块缩放）后，归一化区域 `cropRect` 持久化至 `library.json`（`null` 表示默认居中），静态应用、动态壁纸 GL 渲染、网格缩略图与主页概览同步按该区域生效。
   - `AutoDarkApp.onCreate()` 负责执行 `migrateLegacyCustomWallpapersIfNeeded` 迁移旧版自定义壁纸。
 - **高规格视频预检（`VideoSpecEvaluator`）**：
   - 导入前检测以下 4 项条件，满足 **任意 2 项及以上**（`TRIGGER_MIN_CONDITIONS = 2`）时弹窗提醒用户（可选择「仍然导入」、「跳过高规格视频」或「取消」）：
@@ -84,24 +85,27 @@ byd-autodarkmode/
         │   │   ├── values/ & values-night/          # 车机原生浅色/深色双主题、配色与 strings.xml
         │   │   ├── values/dimens.xml & values-land/ # 侧栏宽度 (156dp / 横屏 216dp) 与网格列数 (2 列 / 横屏 3 列)
         │   │   ├── xml/live_wallpaper.xml           # 动态壁纸服务元数据描述
-        │   │   └── layout/                          # activity_main + 主页 / 壁纸 / 关于页面与 dialog_info_menu
+        │   │   └── layout/                          # activity_main + 主页 / 壁纸 / 关于页面与 dialog_info_menu / dialog_wallpaper_crop
         │   └── java/com/byd/autodarkwallpaper/
         │       ├── AutoDarkApp.java                 # 应用入口与旧版自定义壁纸迁移
         │       ├── config/AppPrefs.java             # SharedPreferences (byd_autodark_prefs) 配置项管理
         │       ├── util/AppLogger.java              # 内存缓冲与本地/SAF 持久化日志工具
         │       ├── monitor/VehicleStateMonitor.java # 比亚迪 key_byd_night_mode / time_wallpaper_mode 实时监听
         │       ├── wallpaper/
+        │       │   ├── CropRect.java                # 归一化无损裁剪区域模型与 JSON 序列化
+        │       │   ├── WallpaperCropMath.java       # 取景平移、焦点缩放与视口计算几何算法
         │       │   ├── VideoSpecEvaluator.java        # 高规格视频阈值评估器（4 选 2 触发提示）
-        │       │   ├── WallpaperRepository.java       # 多壁纸库存储、视频预检导入、随机抽取与原壁纸备份
-        │       │   └── WallpaperController.java       # 直接修改壁纸与动态壁纸调度控制器
+        │       │   ├── WallpaperRepository.java       # 多壁纸库存储、视频预检导入、裁剪保存、随机抽取与原壁纸备份
+        │       │   └── WallpaperController.java       # 直接修改壁纸（含区域解码）与动态壁纸调度控制器
         │       ├── service/
-        │       │   ├── WallpaperGlRenderer.java       # OpenGL ES 2.0 统一渲染器（2D 图片 + OES 视频帧）
+        │       │   ├── WallpaperGlRenderer.java       # OpenGL ES 2.0 统一渲染器（2D 图片含裁剪矩阵 + OES 视频帧）
         │       │   ├── AutoDarkWallpaperService.java  # 动态壁纸 Engine（Media3 ExoPlayer + 400ms 过渡）
         │       │   └── AutoDarkMonitorService.java    # 前台保活监控服务
         │       ├── receiver/BootReceiver.java         # 开机/上电自启接收器
         │       └── ui/
-        │           ├── MainActivity.java              # 左侧导航栏与三大功能页控制逻辑
-        │           └── WallpaperGridAdapter.java      # 壁纸网格列表适配器（带缩略图缓存）
+        │           ├── MainActivity.java              # 左侧导航栏与三大功能页控制逻辑（含取景预览与剪裁弹窗）
+        │           ├── WallpaperCropView.java         # 锁定车机屏幕比例的交互式取景剪裁与只读预览视图
+        │           └── WallpaperGridAdapter.java      # 壁纸网格列表适配器（带按裁剪区解码的缩略图缓存）
         └── test/java/com/byd/autodarkwallpaper/       # JUnit 4 + Robolectric 本地单元测试
             ├── config/AppPrefsTest.java
             ├── monitor/VehicleStateMonitorTest.java
@@ -109,6 +113,7 @@ byd-autodarkmode/
             ├── service/WallpaperGlRendererMathTest.java
             ├── util/AppLoggerTest.java
             └── wallpaper/
+                ├── CropRectAndMathTest.java
                 ├── VideoSpecEvaluatorTest.java
                 ├── WallpaperControllerTest.java
                 └── WallpaperRepositoryTest.java

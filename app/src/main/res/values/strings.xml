@@ -44,8 +44,12 @@
     <string name="info_section_static_body">直接替换系统桌面静态壁纸（仅支持图片）。开启前自动备份当前壁纸，关闭开关后自动复原。</string>
     <string name="info_section_live_title">动态壁纸模式</string>
     <string name="info_section_live_body">通过动态壁纸引擎渐变切换，支持图片与视频。</string>
-    <string name="info_section_library_title">壁纸管理与视频规格</string>
-    <string name="info_section_library_body">支持多选导入；日间与夜间可分别设为「指定」或「随机」。</string>
+    <string name="info_section_library_title">壁纸管理与取景剪裁</string>
+    <string name="info_section_library_body">支持多选导入，日间与夜间可分别设为「指定」或「随机」。静态图片可随时点击裁剪图标或长按卡片调整桌面取景区域（原图无损保留）。</string>
+    <string name="crop_dialog_title">调整壁纸取景</string>
+    <string name="crop_dialog_hint">拖动调整位置 · 双指或滑块缩放</string>
+    <string name="btn_crop_reset">恢复默认</string>
+    <string name="btn_crop_save">保存取景</string>
     <string name="info_section_debug_title">调试日志</string>
     <string name="info_section_debug_body">在「关于」页开启调试日志后，可实时查看运行记录、切换日志目录、复制或导出至 U 盘。</string>
 </resources>
